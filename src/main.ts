@@ -5,11 +5,13 @@ const H = 720;
 const HUD = 76;
 const PLAY_H = H - HUD;
 const PLAYER_Y = H - 58;
+const ASSET_BASE = import.meta.env.BASE_URL;
 
 type Vec = { x: number; y: number };
 type Bullet = Vec & { vx: number; vy: number; enemy: boolean; r: number; power: number; color: string };
 type EnemyKind = "bug" | "diver" | "zig" | "armor" | "saucer";
 type State = "title" | "playing" | "paused" | "stageClear" | "gameOver" | "victory";
+type BombWave = { x: number; y: number; t: number; width: number };
 
 type Enemy = {
   id: number;
@@ -94,10 +96,10 @@ const bgPanels: Sprite[] = [
 ];
 
 const stages: Stage[] = [
-  { name: "STAR DRIFT", bg: 0, rows: 3, cols: 8, kinds: ["bug", "bug", "diver"], speed: 24, fire: 1.2, dive: 0.45 },
-  { name: "VENOM NEBULA", bg: 1, rows: 4, cols: 8, kinds: ["bug", "zig", "diver"], speed: 32, fire: 1.8, dive: 0.8 },
-  { name: "ROCK BELT", bg: 2, rows: 4, cols: 9, kinds: ["armor", "bug", "zig"], speed: 36, fire: 2.2, dive: 1.0 },
-  { name: "PLASMA NEST", bg: 3, rows: 5, cols: 9, kinds: ["saucer", "zig", "armor", "diver"], speed: 42, fire: 2.7, dive: 1.35 },
+  { name: "STAR DRIFT", bg: 0, rows: 3, cols: 8, kinds: ["bug", "bug", "diver"], speed: 24, fire: 0.62, dive: 0.45 },
+  { name: "VENOM NEBULA", bg: 1, rows: 4, cols: 8, kinds: ["bug", "zig", "diver"], speed: 32, fire: 0.86, dive: 0.8 },
+  { name: "ROCK BELT", bg: 2, rows: 4, cols: 9, kinds: ["armor", "bug", "zig"], speed: 36, fire: 1.05, dive: 1.0 },
+  { name: "PLASMA NEST", bg: 3, rows: 5, cols: 9, kinds: ["saucer", "zig", "armor", "diver"], speed: 42, fire: 1.2, dive: 1.35 },
   { name: "CITADEL CORE", bg: 4, rows: 0, cols: 0, kinds: [], speed: 0, fire: 0, dive: 0, boss: true }
 ];
 
@@ -223,6 +225,7 @@ class Game {
   private enemies: Enemy[] = [];
   private bullets: Bullet[] = [];
   private explosions: Array<Vec & { t: number; big: boolean }> = [];
+  private bombWaves: BombWave[] = [];
   private boss?: Boss;
   private stageTimer = 0;
   private swarmDir = 1;
@@ -238,8 +241,8 @@ class Game {
     this.spriteImg.onload = () => {
       this.spriteSource = makeBlackTransparent(this.spriteImg);
     };
-    this.spriteImg.src = "/assets/spritesheet.png";
-    this.bgImg.src = "/assets/backgrounds.png";
+    this.spriteImg.src = `${ASSET_BASE}assets/spritesheet.png`;
+    this.bgImg.src = `${ASSET_BASE}assets/backgrounds.png`;
     this.bind();
     const params = new URLSearchParams(location.search);
     if (params.has("autostart")) {
@@ -279,6 +282,7 @@ class Game {
     this.stageTimer = 0;
     this.bullets = [];
     this.explosions = [];
+    this.bombWaves = [];
     this.enemies = [];
     this.boss = undefined;
     this.playerX = W / 2;
@@ -352,20 +356,27 @@ class Game {
 
   private useBomb() {
     if (this.bombs <= 0) return;
-    this.bombCd = 0.55;
+    this.bombCd = 0.85;
     this.bombs -= 1;
     this.synth.sfx("bomb");
-    this.bullets = this.bullets.filter((b) => !b.enemy);
+    const blast: BombWave = { x: this.playerX, y: PLAYER_Y - 54, t: 0, width: 172 };
+    this.bombWaves.push(blast);
+    this.bullets = this.bullets.filter((b) => !b.enemy || Math.abs(b.x - blast.x) > blast.width * 0.62);
     for (const e of this.enemies) {
-      e.hp = 0;
-      this.explosions.push({ x: e.x, y: e.y, t: 0, big: false });
-      this.score += Math.floor(e.score * 0.55);
+      if (Math.abs(e.x - blast.x) < blast.width * 0.54 && e.y < PLAYER_Y - 22) {
+        e.hp = 0;
+        this.explosions.push({ x: e.x, y: e.y, t: 0, big: e.kind === "armor" || e.kind === "saucer" });
+        this.score += Math.floor(e.score * 0.6);
+      }
     }
     this.enemies = this.enemies.filter((e) => e.hp > 0);
     if (this.boss) {
-      this.boss.hp = Math.max(0, this.boss.hp - 80);
-      for (let i = 0; i < 8; i += 1) this.explosions.push({ x: this.boss.x - 190 + i * 55, y: this.boss.y + Math.sin(i) * 42, t: 0, big: true });
+      if (Math.abs(this.boss.x - blast.x) < 205) {
+        this.boss.hp = Math.max(0, this.boss.hp - 42);
+        for (let i = 0; i < 5; i += 1) this.explosions.push({ x: blast.x - 58 + i * 29, y: this.boss.y - 80 + i * 28, t: 0, big: true });
+      }
     }
+    for (let i = 0; i < 7; i += 1) this.explosions.push({ x: blast.x + Math.sin(i * 2.2) * 42, y: PLAYER_Y - 110 - i * 74, t: -i * 0.035, big: i % 2 === 0 });
   }
 
   private updateEnemies(dt: number) {
@@ -391,15 +402,15 @@ class Game {
       e.shoot -= dt;
       if (e.shoot <= 0) {
         const chance = st.fire * (e.kind === "saucer" ? 1.7 : 1);
-        e.shoot = 0.7 + Math.random() * 2.1 / chance;
-        if (Math.random() < 0.42 + this.stage * 0.05 || e.dive > 0) this.fireEnemy(e);
+        e.shoot = 1.2 + Math.random() * 3.4 / Math.max(0.55, chance);
+        if (Math.random() < 0.2 + this.stage * 0.035 || e.dive > 0) this.fireEnemy(e);
       }
     }
   }
 
   private fireEnemy(e: Enemy) {
     if (e.kind === "saucer") {
-      for (let i = -1; i <= 1; i += 1) this.bullets.push({ x: e.x, y: e.y + 22, vx: i * 82, vy: 210 + Math.abs(i) * 35, enemy: true, r: 5, power: 1, color: "#ff63f7" });
+      for (let i = -1; i <= 1; i += 2) this.bullets.push({ x: e.x, y: e.y + 22, vx: i * 70, vy: 215, enemy: true, r: 5, power: 1, color: "#ff63f7" });
       return;
     }
     const aim = clamp((this.playerX - e.x) * 0.22, -90, 90);
@@ -415,16 +426,16 @@ class Game {
     b.y = HUD + 205 + Math.sin(b.t * 1.3) * 18;
     b.shoot -= dt;
     if (b.shoot <= 0) {
-      b.shoot = [0.8, 0.55, 0.38][b.phase];
-      const spread = b.phase === 0 ? 4 : b.phase === 1 ? 6 : 8;
+      b.shoot = [1.15, 0.9, 0.68][b.phase];
+      const spread = b.phase === 0 ? 3 : b.phase === 1 ? 4 : 5;
       for (let i = 0; i < spread; i += 1) {
         const dx = i - (spread - 1) / 2;
-        this.bullets.push({ x: b.x + dx * 36, y: b.y + 128, vx: dx * 54, vy: 230 + Math.abs(dx) * 18, enemy: true, r: 6, power: 1, color: i % 2 ? "#ff49df" : "#ff7a2b" });
+        this.bullets.push({ x: b.x + dx * 42, y: b.y + 128, vx: dx * 42, vy: 220 + Math.abs(dx) * 16, enemy: true, r: 6, power: 1, color: i % 2 ? "#ff49df" : "#ff7a2b" });
       }
     }
     b.beam -= dt;
     if (b.phase >= 1 && b.beam <= 0) {
-      b.beam = b.phase === 1 ? 2.8 : 1.9;
+      b.beam = b.phase === 1 ? 3.6 : 2.7;
       this.bullets.push({ x: b.x, y: b.y + 148, vx: 0, vy: 360, enemy: true, r: 14, power: 1, color: "#ff3c37" });
       this.synth.sfx("boss");
     }
@@ -440,7 +451,9 @@ class Game {
 
   private updateExplosions(dt: number) {
     for (const ex of this.explosions) ex.t += dt;
-    this.explosions = this.explosions.filter((ex) => ex.t < 0.5);
+    this.explosions = this.explosions.filter((ex) => ex.t < 0.58);
+    for (const wave of this.bombWaves) wave.t += dt;
+    this.bombWaves = this.bombWaves.filter((wave) => wave.t < 0.62);
   }
 
   private checkCollisions() {
@@ -565,6 +578,7 @@ class Game {
     for (const e of this.enemies) this.drawEnemy(e);
     if (this.boss) this.drawBoss(this.boss);
     for (const b of this.bullets) this.drawBullet(b);
+    for (const wave of this.bombWaves) this.drawBombWave(wave);
     this.drawPlayer();
     for (const ex of this.explosions) this.drawExplosion(ex);
   }
@@ -594,11 +608,35 @@ class Game {
   }
 
   private drawExplosion(ex: Vec & { t: number; big: boolean }) {
+    if (ex.t < 0) return;
     const key = ex.t < 0.17 ? "boom1" : ex.t < 0.34 ? "boom2" : "boom3";
     const s = ex.big ? 104 : 68;
     this.ctx.globalAlpha = 1 - ex.t * 1.2;
     this.drawSprite(key, ex.x, ex.y, s, s);
     this.ctx.globalAlpha = 1;
+  }
+
+  private drawBombWave(wave: BombWave) {
+    const progress = clamp(wave.t / 0.62, 0, 1);
+    const top = HUD + 8;
+    const height = PLAYER_Y - top;
+    const beamWidth = wave.width * (1 - progress * 0.38);
+    const alpha = 1 - progress;
+    const g = this.ctx.createLinearGradient(wave.x, PLAYER_Y, wave.x, top);
+    g.addColorStop(0, `rgba(255, 247, 130, ${0.52 * alpha})`);
+    g.addColorStop(0.45, `rgba(255, 93, 214, ${0.32 * alpha})`);
+    g.addColorStop(1, `rgba(74, 235, 255, ${0.08 * alpha})`);
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = "screen";
+    this.ctx.fillStyle = g;
+    this.ctx.fillRect(wave.x - beamWidth / 2, top, beamWidth, height);
+    this.ctx.strokeStyle = `rgba(255, 255, 255, ${0.8 * alpha})`;
+    this.ctx.lineWidth = 4;
+    this.ctx.beginPath();
+    this.ctx.moveTo(wave.x, PLAYER_Y);
+    this.ctx.lineTo(wave.x + Math.sin(wave.t * 48) * 18, top);
+    this.ctx.stroke();
+    this.ctx.restore();
   }
 
   private drawSprite(key: string, cx: number, cy: number, dw: number, dh: number) {
