@@ -52,18 +52,37 @@ type Stage = {
 
 type Sprite = { x: number; y: number; w: number; h: number };
 
+const SPRITE_SHEET_SIZE = 1254;
+const SPRITE_GRID = 4;
+const SPRITE_CELL = SPRITE_SHEET_SIZE / SPRITE_GRID;
+const SPRITE_PAD = 12;
+
+function spriteCell(col: number, row: number, pad = SPRITE_PAD): Sprite {
+  return {
+    x: col * SPRITE_CELL + pad,
+    y: row * SPRITE_CELL + pad,
+    w: SPRITE_CELL - pad * 2,
+    h: SPRITE_CELL - pad * 2
+  };
+}
+
 const sprites: Record<string, Sprite> = {
-  player: { x: 30, y: 342, w: 128, h: 120 },
-  bug: { x: 45, y: 72, w: 76, h: 74 },
-  diver: { x: 274, y: 72, w: 134, h: 150 },
-  zig: { x: 526, y: 79, w: 68, h: 170 },
-  armor: { x: 735, y: 83, w: 105, h: 156 },
-  saucer: { x: 942, y: 84, w: 109, h: 64 },
-  bomb: { x: 630, y: 356, w: 74, h: 96 },
-  boss: { x: 584, y: 708, w: 600, h: 458 },
-  boom1: { x: 38, y: 548, w: 86, h: 82 },
-  boom2: { x: 186, y: 538, w: 130, h: 110 },
-  boom3: { x: 403, y: 529, w: 150, h: 120 }
+  player: spriteCell(0, 0),
+  bug: spriteCell(1, 0),
+  diver: spriteCell(2, 0),
+  zig: spriteCell(3, 0),
+  armor: spriteCell(0, 1),
+  saucer: spriteCell(1, 1),
+  bomb: spriteCell(2, 1),
+  laser: spriteCell(3, 1),
+  orb: spriteCell(0, 2),
+  boom1: spriteCell(1, 2),
+  boom2: spriteCell(2, 2),
+  boom3: spriteCell(3, 2),
+  boss: spriteCell(0, 3),
+  turret: spriteCell(1, 3),
+  core: spriteCell(2, 3),
+  flame: spriteCell(3, 3)
 };
 
 const bgPanels: Sprite[] = [
@@ -84,10 +103,10 @@ const stages: Stage[] = [
 
 const enemyStats: Record<EnemyKind, { hp: number; score: number; size: number; color: string }> = {
   bug: { hp: 1, score: 120, size: 34, color: "#78ff69" },
-  diver: { hp: 2, score: 240, size: 44, color: "#b76cff" },
+  diver: { hp: 1, score: 240, size: 44, color: "#b76cff" },
   zig: { hp: 1, score: 180, size: 36, color: "#39eaff" },
-  armor: { hp: 4, score: 420, size: 46, color: "#8dff5d" },
-  saucer: { hp: 3, score: 360, size: 44, color: "#ff57f0" }
+  armor: { hp: 1, score: 420, size: 46, color: "#8dff5d" },
+  saucer: { hp: 1, score: 360, size: 44, color: "#ff57f0" }
 };
 
 const digitMap: Record<string, string[]> = {
@@ -222,7 +241,12 @@ class Game {
     this.spriteImg.src = "/assets/spritesheet.png";
     this.bgImg.src = "/assets/backgrounds.png";
     this.bind();
-    if (new URLSearchParams(location.search).has("autostart")) this.reset();
+    const params = new URLSearchParams(location.search);
+    if (params.has("autostart")) {
+      this.reset();
+      const stageParam = Number(params.get("stage"));
+      if (Number.isInteger(stageParam) && stageParam >= 1 && stageParam <= stages.length) this.loadStage(stageParam - 1);
+    }
     requestAnimationFrame(this.frame);
   }
 
@@ -261,7 +285,7 @@ class Game {
     this.invuln = 1.4;
     const st = stages[index];
     if (st.boss) {
-      this.boss = { x: W / 2, y: HUD + 142, hp: 520, maxHp: 520, t: 0, phase: 0, shoot: 0.5, beam: 0 };
+      this.boss = { x: W / 2, y: HUD + 210, hp: 520, maxHp: 520, t: 0, phase: 0, shoot: 0.5, beam: 0 };
       this.synth.sfx("boss");
       return;
     }
@@ -388,7 +412,7 @@ class Game {
     b.t += dt;
     b.phase = b.hp < b.maxHp * 0.35 ? 2 : b.hp < b.maxHp * 0.68 ? 1 : 0;
     b.x = W / 2 + Math.sin(b.t * (0.7 + b.phase * 0.22)) * (90 + b.phase * 38);
-    b.y = HUD + 126 + Math.sin(b.t * 1.3) * 18;
+    b.y = HUD + 205 + Math.sin(b.t * 1.3) * 18;
     b.shoot -= dt;
     if (b.shoot <= 0) {
       b.shoot = [0.8, 0.55, 0.38][b.phase];
@@ -547,25 +571,16 @@ class Game {
 
   private drawPlayer() {
     if (this.invuln > 0 && Math.floor(this.stageTimer * 16) % 2 === 0) this.ctx.globalAlpha = 0.52;
-    this.drawSprite("player", this.playerX, PLAYER_Y, 92, 88);
+    this.drawSprite("player", this.playerX, PLAYER_Y, 150, 150);
     this.ctx.globalAlpha = 1;
   }
 
   private drawEnemy(e: Enemy) {
-    this.drawSprite(e.kind, e.x, e.y, e.size * 1.7, e.size * 1.7);
-    if (e.hp < e.maxHp) {
-      this.ctx.fillStyle = "rgba(255,255,255,0.25)";
-      this.ctx.fillRect(e.x - 20, e.y + e.size, 40, 4);
-      this.ctx.fillStyle = enemyStats[e.kind].color;
-      this.ctx.fillRect(e.x - 20, e.y + e.size, 40 * e.hp / e.maxHp, 4);
-    }
+    this.drawSprite(e.kind, e.x, e.y, e.size * 2.35, e.size * 2.35);
   }
 
   private drawBoss(b: Boss) {
-    this.drawSprite("boss", b.x, b.y + 26, 470, 360);
-    this.ctx.strokeStyle = b.phase === 2 ? "#ff386f" : "#63f3ff";
-    this.ctx.lineWidth = 2;
-    this.ctx.strokeRect(b.x - 244, b.y - 154, 488, 308);
+    this.drawSprite("boss", b.x, b.y, 390, 390);
   }
 
   private drawBullet(b: Bullet) {
