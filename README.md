@@ -15,6 +15,14 @@ bun run dev
 http://127.0.0.1:5173/
 ```
 
+## 公開URL
+
+GitHub Pages で公開する場合のURLです。
+
+```text
+https://sakataka.github.io/nova-swarm/
+```
+
 ## 操作方法
 
 | 操作 | キー |
