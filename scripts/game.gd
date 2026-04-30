@@ -100,6 +100,7 @@ var digit_map := {
 
 func _ready() -> void:
 	randomize()
+	_setup_native_window()
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	font = ThemeDB.fallback_font
 	sprite_texture = _load_sprite_texture()
@@ -107,6 +108,18 @@ func _ready() -> void:
 	_setup_audio()
 	_parse_web_query()
 	queue_redraw()
+
+
+func _setup_native_window() -> void:
+	if OS.get_name() == "Web":
+		return
+	var window_size := Vector2i(int(W * 2.0), int(H * 2.0))
+	DisplayServer.window_set_size(window_size)
+	var screen_size := DisplayServer.screen_get_size()
+	DisplayServer.window_set_position(Vector2i(
+		int((screen_size.x - window_size.x) * 0.5),
+		int((screen_size.y - window_size.y) * 0.5)
+	))
 
 
 func _process(delta: float) -> void:
