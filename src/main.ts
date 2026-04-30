@@ -1,4 +1,5 @@
 import "./styles.css";
+import { sfxr } from "jsfxr";
 
 const W = 960;
 const H = 720;
@@ -12,6 +13,36 @@ type Bullet = Vec & { vx: number; vy: number; enemy: boolean; r: number; power: 
 type EnemyKind = "bug" | "diver" | "zig" | "armor" | "saucer";
 type State = "title" | "playing" | "paused" | "stageClear" | "gameOver" | "victory";
 type BombWave = { x: number; y: number; t: number; width: number };
+type SfxName = "shot" | "hit" | "boom" | "bomb" | "hurt" | "boss" | "clear";
+type SfxParams = {
+  oldParams: true;
+  wave_type: number;
+  p_env_attack: number;
+  p_env_sustain: number;
+  p_env_punch: number;
+  p_env_decay: number;
+  p_base_freq: number;
+  p_freq_limit: number;
+  p_freq_ramp: number;
+  p_freq_dramp: number;
+  p_vib_strength: number;
+  p_vib_speed: number;
+  p_arp_mod: number;
+  p_arp_speed: number;
+  p_duty: number;
+  p_duty_ramp: number;
+  p_repeat_speed: number;
+  p_pha_offset: number;
+  p_pha_ramp: number;
+  p_lpf_freq: number;
+  p_lpf_ramp: number;
+  p_lpf_resonance: number;
+  p_hpf_freq: number;
+  p_hpf_ramp: number;
+  sound_vol: number;
+  sample_rate: number;
+  sample_size: number;
+};
 
 type Enemy = {
   id: number;
@@ -125,9 +156,216 @@ const digitMap: Record<string, string[]> = {
   " ": ["000", "000", "000", "000", "000"]
 };
 
+const sfxDefinitions: Record<SfxName, SfxParams> = {
+  shot: {
+    oldParams: true,
+    wave_type: 0,
+    p_env_attack: 0,
+    p_env_sustain: 0.045,
+    p_env_punch: 0.12,
+    p_env_decay: 0.055,
+    p_base_freq: 0.72,
+    p_freq_limit: 0.26,
+    p_freq_ramp: -0.58,
+    p_freq_dramp: 0,
+    p_vib_strength: 0,
+    p_vib_speed: 0,
+    p_arp_mod: 0,
+    p_arp_speed: 0,
+    p_duty: 0.22,
+    p_duty_ramp: -0.18,
+    p_repeat_speed: 0,
+    p_pha_offset: 0.08,
+    p_pha_ramp: -0.1,
+    p_lpf_freq: 1,
+    p_lpf_ramp: 0,
+    p_lpf_resonance: 0,
+    p_hpf_freq: 0.18,
+    p_hpf_ramp: 0,
+    sound_vol: 0.18,
+    sample_rate: 44100,
+    sample_size: 8
+  },
+  hit: {
+    oldParams: true,
+    wave_type: 3,
+    p_env_attack: 0,
+    p_env_sustain: 0.055,
+    p_env_punch: 0.2,
+    p_env_decay: 0.13,
+    p_base_freq: 0.33,
+    p_freq_limit: 0,
+    p_freq_ramp: -0.23,
+    p_freq_dramp: 0,
+    p_vib_strength: 0,
+    p_vib_speed: 0,
+    p_arp_mod: 0,
+    p_arp_speed: 0,
+    p_duty: 0,
+    p_duty_ramp: 0,
+    p_repeat_speed: 0,
+    p_pha_offset: -0.03,
+    p_pha_ramp: -0.06,
+    p_lpf_freq: 0.68,
+    p_lpf_ramp: -0.12,
+    p_lpf_resonance: 0.12,
+    p_hpf_freq: 0.24,
+    p_hpf_ramp: 0,
+    sound_vol: 0.19,
+    sample_rate: 44100,
+    sample_size: 8
+  },
+  boom: {
+    oldParams: true,
+    wave_type: 3,
+    p_env_attack: 0,
+    p_env_sustain: 0.28,
+    p_env_punch: 0.62,
+    p_env_decay: 0.42,
+    p_base_freq: 0.16,
+    p_freq_limit: 0,
+    p_freq_ramp: -0.22,
+    p_freq_dramp: -0.08,
+    p_vib_strength: 0,
+    p_vib_speed: 0,
+    p_arp_mod: 0,
+    p_arp_speed: 0,
+    p_duty: 0,
+    p_duty_ramp: 0,
+    p_repeat_speed: 0,
+    p_pha_offset: -0.12,
+    p_pha_ramp: -0.12,
+    p_lpf_freq: 0.56,
+    p_lpf_ramp: -0.24,
+    p_lpf_resonance: 0.2,
+    p_hpf_freq: 0.02,
+    p_hpf_ramp: 0.05,
+    sound_vol: 0.34,
+    sample_rate: 44100,
+    sample_size: 8
+  },
+  bomb: {
+    oldParams: true,
+    wave_type: 3,
+    p_env_attack: 0,
+    p_env_sustain: 0.55,
+    p_env_punch: 0.72,
+    p_env_decay: 0.72,
+    p_base_freq: 0.12,
+    p_freq_limit: 0,
+    p_freq_ramp: -0.18,
+    p_freq_dramp: -0.12,
+    p_vib_strength: 0.08,
+    p_vib_speed: 0.44,
+    p_arp_mod: -0.18,
+    p_arp_speed: 0.58,
+    p_duty: 0,
+    p_duty_ramp: 0,
+    p_repeat_speed: 0,
+    p_pha_offset: -0.18,
+    p_pha_ramp: -0.16,
+    p_lpf_freq: 0.48,
+    p_lpf_ramp: -0.3,
+    p_lpf_resonance: 0.28,
+    p_hpf_freq: 0,
+    p_hpf_ramp: 0.04,
+    sound_vol: 0.38,
+    sample_rate: 44100,
+    sample_size: 8
+  },
+  hurt: {
+    oldParams: true,
+    wave_type: 0,
+    p_env_attack: 0,
+    p_env_sustain: 0.16,
+    p_env_punch: 0.42,
+    p_env_decay: 0.2,
+    p_base_freq: 0.28,
+    p_freq_limit: 0.06,
+    p_freq_ramp: -0.36,
+    p_freq_dramp: -0.02,
+    p_vib_strength: 0.2,
+    p_vib_speed: 0.56,
+    p_arp_mod: -0.24,
+    p_arp_speed: 0.72,
+    p_duty: 0.58,
+    p_duty_ramp: 0.1,
+    p_repeat_speed: 0.25,
+    p_pha_offset: 0.06,
+    p_pha_ramp: -0.08,
+    p_lpf_freq: 0.82,
+    p_lpf_ramp: -0.1,
+    p_lpf_resonance: 0.08,
+    p_hpf_freq: 0.05,
+    p_hpf_ramp: 0,
+    sound_vol: 0.26,
+    sample_rate: 44100,
+    sample_size: 8
+  },
+  boss: {
+    oldParams: true,
+    wave_type: 1,
+    p_env_attack: 0.02,
+    p_env_sustain: 0.68,
+    p_env_punch: 0.46,
+    p_env_decay: 0.65,
+    p_base_freq: 0.14,
+    p_freq_limit: 0.04,
+    p_freq_ramp: -0.12,
+    p_freq_dramp: -0.04,
+    p_vib_strength: 0.12,
+    p_vib_speed: 0.32,
+    p_arp_mod: -0.22,
+    p_arp_speed: 0.42,
+    p_duty: 0.62,
+    p_duty_ramp: -0.12,
+    p_repeat_speed: 0.08,
+    p_pha_offset: -0.08,
+    p_pha_ramp: -0.08,
+    p_lpf_freq: 0.58,
+    p_lpf_ramp: -0.22,
+    p_lpf_resonance: 0.24,
+    p_hpf_freq: 0.02,
+    p_hpf_ramp: 0,
+    sound_vol: 0.34,
+    sample_rate: 44100,
+    sample_size: 8
+  },
+  clear: {
+    oldParams: true,
+    wave_type: 0,
+    p_env_attack: 0,
+    p_env_sustain: 0.22,
+    p_env_punch: 0.45,
+    p_env_decay: 0.28,
+    p_base_freq: 0.46,
+    p_freq_limit: 0,
+    p_freq_ramp: 0.18,
+    p_freq_dramp: 0,
+    p_vib_strength: 0.04,
+    p_vib_speed: 0.26,
+    p_arp_mod: 0.42,
+    p_arp_speed: 0.52,
+    p_duty: 0.18,
+    p_duty_ramp: 0.06,
+    p_repeat_speed: 0.18,
+    p_pha_offset: 0.06,
+    p_pha_ramp: 0,
+    p_lpf_freq: 0.92,
+    p_lpf_ramp: 0,
+    p_lpf_resonance: 0.08,
+    p_hpf_freq: 0.08,
+    p_hpf_ramp: 0,
+    sound_vol: 0.22,
+    sample_rate: 44100,
+    sample_size: 8
+  }
+};
+
 class Synth {
   private ctx?: AudioContext;
   private master?: GainNode;
+  private sfxBuffers?: Record<SfxName, AudioBuffer>;
   private timer = 0;
   muted = false;
 
@@ -137,6 +375,7 @@ class Synth {
       this.master = this.ctx.createGain();
       this.master.gain.value = 0.18;
       this.master.connect(this.ctx.destination);
+      this.sfxBuffers = this.makeSfxBuffers();
       this.loop();
     }
     if (this.ctx.state === "suspended") await this.ctx.resume();
@@ -147,30 +386,26 @@ class Synth {
     if (this.master) this.master.gain.value = this.muted ? 0 : 0.18;
   }
 
-  sfx(name: "shot" | "hit" | "boom" | "bomb" | "hurt" | "boss" | "clear") {
-    if (!this.ctx || !this.master || this.muted) return;
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
+  sfx(name: SfxName) {
+    if (!this.ctx || !this.master || !this.sfxBuffers || this.muted) return;
+    const source = this.ctx.createBufferSource();
     const gain = this.ctx.createGain();
-    const table = {
-      shot: [760, 0.055, "square"],
-      hit: [180, 0.09, "sawtooth"],
-      boom: [70, 0.28, "sawtooth"],
-      bomb: [90, 0.7, "triangle"],
-      hurt: [110, 0.22, "square"],
-      boss: [55, 0.9, "sawtooth"],
-      clear: [520, 0.45, "triangle"]
-    } as const;
-    const [freq, len, type] = table[name];
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, now);
-    osc.frequency.exponentialRampToValueAtTime(Math.max(30, freq * 0.35), now + len);
-    gain.gain.setValueAtTime(name === "bomb" || name === "boss" ? 0.35 : 0.22, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + len);
-    osc.connect(gain);
+    source.buffer = this.sfxBuffers[name];
+    gain.gain.value = name === "bomb" || name === "boss" ? 0.88 : 0.72;
+    source.connect(gain);
     gain.connect(this.master);
-    osc.start(now);
-    osc.stop(now + len);
+    source.start();
+  }
+
+  private makeSfxBuffers(): Record<SfxName, AudioBuffer> {
+    if (!this.ctx) throw new Error("AudioContext is not ready");
+    const ctx = this.ctx;
+    const entries = Object.entries(sfxDefinitions).map(([name, definition]) => {
+      const source = sfxr.toWebAudio(definition, ctx);
+      if (!source.buffer) throw new Error(`JSFXR failed to render ${name}`);
+      return [name, source.buffer] as const;
+    });
+    return Object.fromEntries(entries) as Record<SfxName, AudioBuffer>;
   }
 
   private loop() {
