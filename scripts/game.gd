@@ -529,7 +529,28 @@ func _draw_player() -> void:
 		draw_arc(Vector2(player.x, player.y), 78.0 - pulse * 6.0, 0.0, TAU, 64, Color(1.0, 0.32, 0.9, 0.32), 2.0)
 	_draw_sprite("player", player.x, player.y, 150, 150, tint)
 	if player.shield > 0:
-		draw_arc(Vector2(player.x, player.y), 55.0, 0.0, TAU, 48, Color(0.52, 0.94, 1.0, 0.56), 3.0)
+		_draw_player_shield()
+
+
+func _draw_player_shield() -> void:
+	var center := Vector2(player.x, player.y)
+	var pulse := 0.5 + sin(stage_timer * 7.5) * 0.5
+	var shield_count: int = clampi(player.shield, 1, 2)
+	for layer in range(shield_count):
+		var radius := 58.0 + layer * 13.0 + pulse * 3.0
+		var alpha := 0.34 + layer * 0.1
+		var color := Color(0.38, 0.92, 1.0, alpha)
+		draw_arc(center, radius, -PI * 0.42 + layer * 0.5, PI * 0.72 + layer * 0.5, 32, color, 4.0)
+		draw_arc(center, radius, PI * 0.58 + layer * 0.5, PI * 1.72 + layer * 0.5, 32, color, 4.0)
+		draw_arc(center, radius + 5.0, -PI * 0.06 - layer * 0.35, PI * 0.2 - layer * 0.35, 14, Color(1.0, 1.0, 1.0, alpha + 0.16), 2.0)
+
+	for i in range(shield_count):
+		var angle := stage_timer * (1.6 + i * 0.32) + i * TAU / float(shield_count)
+		var icon_center := center + Vector2(cos(angle), sin(angle)) * (66.0 + i * 10.0)
+		if ui_texture:
+			draw_texture_rect_region(ui_texture, Rect2(icon_center.x - 17.0, icon_center.y - 17.0, 34.0, 34.0), ui_regions["shield"], Color(1.0, 1.0, 1.0, 0.92))
+		else:
+			draw_circle(icon_center, 12.0, Color(0.45, 0.92, 1.0, 0.78))
 
 
 func _draw_enemy(enemy: Dictionary) -> void:

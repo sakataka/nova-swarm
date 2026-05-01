@@ -89,6 +89,14 @@ export_presets.cfg
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/gameplay_test.gd
 ```
 
+AIシミュレーション:
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/ai_simulation_test.gd --seconds=75 --seed=20260501 --min-stage=2
+```
+
+`AI_SIM_RESULT` にステージ、スコア、残ライフ、被弾回数がJSONで出ます。AIの調整はこのコマンドを画面なしで回して確認できます。
+
 Godot MCPで確認する場合:
 
 ```text

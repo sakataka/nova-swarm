@@ -4,6 +4,8 @@ class_name AiPilot
 const Config := preload("res://scripts/game_config.gd")
 
 const COMMAND_IDLE := {"move_axis": 0.0, "shoot": false, "bomb": false, "overdrive": false}
+const MIN_X := 52.0
+const MAX_X := Config.W - 52.0
 
 
 func get_command(player: RefCounted, enemies: Array, boss: Dictionary, bullets: Array, items: Array) -> Dictionary:
@@ -12,58 +14,98 @@ func get_command(player: RefCounted, enemies: Array, boss: Dictionary, bullets: 
 	command.shoot = has_target
 	command.overdrive = has_target and player.can_overdrive()
 
-	var threat := _read_threat(player, bullets, enemies, boss)
-	var target_x: float = player.x
-	var danger: float = threat["danger"]
-	if danger >= 1.0:
-		target_x = threat["escape_x"]
-	elif _should_collect_item(player, items, danger):
-		target_x = _best_item(items, player).x
-	elif has_target:
-		target_x = _best_attack_x(player, enemies, boss)
-
+	var immediate_danger := _danger_at_x(player.x, player, bullets, enemies, boss)
+	var intent_x := _choose_intent_x(player, enemies, boss, items, immediate_danger)
+	var lane := _choose_lane(player, bullets, enemies, boss, intent_x)
+	var target_x: float = lane["x"]
+	var danger: float = lane["danger"]
 	command.move_axis = _axis_toward(player.x, target_x, danger)
-	command.bomb = player.can_bomb() and danger >= 2.3
+	command.bomb = player.can_bomb() and immediate_danger >= 2.2
 	return command
 
 
-func _read_threat(player: RefCounted, bullets: Array, enemies: Array, boss: Dictionary) -> Dictionary:
+func _choose_intent_x(player: RefCounted, enemies: Array, boss: Dictionary, items: Array, danger: float) -> float:
+	if _should_collect_item(player, items, danger):
+		return _best_item(items, player).x
+	if not enemies.is_empty() or not boss.is_empty():
+		return _best_attack_x(player, enemies, boss)
+	return player.x
+
+
+func _choose_lane(player: RefCounted, bullets: Array, enemies: Array, boss: Dictionary, intent_x: float) -> Dictionary:
+	var candidates := _candidate_lanes(player.x, intent_x)
+	var best_x: float = player.x
+	var best_score := INF
+	var best_danger := 0.0
+	for candidate_x in candidates:
+		var x: float = candidate_x
+		var danger := _danger_at_x(x, player, bullets, enemies, boss)
+		var travel_cost := absf(x - player.x) * (0.002 if danger < 1.0 else 0.004)
+		var intent_cost := absf(x - intent_x) * (0.006 if danger < 1.0 else 0.0008)
+		var edge_cost := 0.18 if x < 86.0 or x > Config.W - 86.0 else 0.0
+		var score := danger * 4.2 + travel_cost + intent_cost + edge_cost
+		if score < best_score:
+			best_score = score
+			best_x = x
+			best_danger = danger
+	return {"x": best_x, "danger": best_danger}
+
+
+func _candidate_lanes(current_x: float, intent_x: float) -> Array[float]:
+	var lanes: Array[float] = [
+		MIN_X,
+		102.0,
+		172.0,
+		242.0,
+		312.0,
+		382.0,
+		452.0,
+		522.0,
+		592.0,
+		662.0,
+		732.0,
+		802.0,
+		872.0,
+		MAX_X,
+		clampf(current_x, MIN_X, MAX_X),
+		clampf(current_x - 118.0, MIN_X, MAX_X),
+		clampf(current_x + 118.0, MIN_X, MAX_X),
+		clampf(intent_x, MIN_X, MAX_X),
+	]
+	return lanes
+
+
+func _danger_at_x(test_x: float, player: RefCounted, bullets: Array, enemies: Array, boss: Dictionary) -> float:
 	var danger := 0.0
-	var pressure_x := 0.0
 	for bullet in bullets:
 		if not bullet.enemy:
 			continue
 		var vy: float = maxf(1.0, bullet.vy)
 		var time_to_player: float = (player.y - bullet.y) / vy
-		if time_to_player < -0.12 or time_to_player > 1.35:
+		if time_to_player < -0.2 or time_to_player > 1.65:
 			continue
 		var predicted_x: float = bullet.x + bullet.vx * time_to_player
-		var lateral: float = absf(predicted_x - player.x)
-		var radius: float = bullet.r + 34.0
-		if lateral > radius:
+		var lateral: float = absf(predicted_x - test_x)
+		var radius: float = bullet.r + 52.0
+		if lateral > radius + 24.0:
 			continue
-		var weight: float = (1.0 - lateral / radius) * (1.35 - maxf(0.0, time_to_player))
+		var lane_ratio := clampf(1.0 - lateral / (radius + 24.0), 0.0, 1.0)
+		var urgency := clampf(1.65 - maxf(0.0, time_to_player), 0.25, 1.65)
+		var weight: float = lane_ratio * lane_ratio * urgency
 		danger += weight
-		pressure_x += (1.0 if predicted_x >= player.x else -1.0) * weight
 
 	for enemy in enemies:
 		if enemy.y < player.y - 210.0:
 			continue
-		var lateral_enemy: float = absf(enemy.x - player.x)
-		if lateral_enemy < enemy.size + 46.0:
-			var weight_enemy: float = (1.0 - lateral_enemy / (enemy.size + 46.0)) * 1.25
+		var lateral_enemy: float = absf(enemy.x - test_x)
+		var radius_enemy: float = enemy.size + 58.0
+		if lateral_enemy < radius_enemy:
+			var weight_enemy: float = (1.0 - lateral_enemy / radius_enemy) * 1.7
 			danger += weight_enemy
-			pressure_x += (1.0 if enemy.x >= player.x else -1.0) * weight_enemy
 
-	if not boss.is_empty() and boss.get("tell", 0.0) > 0.0 and absf(boss.x - player.x) < 92.0:
-		danger += 1.2
-		pressure_x += 1.2 if boss.x >= player.x else -1.2
-
-	var escape_x: float = player.x
-	if danger > 0.0:
-		escape_x = player.x - signf(pressure_x if pressure_x != 0.0 else randf() - 0.5) * 154.0
-		escape_x = clampf(escape_x, 52.0, Config.W - 52.0)
-	return {"danger": danger, "escape_x": escape_x}
+	if not boss.is_empty() and boss.get("tell", 0.0) > 0.0 and absf(boss.x - test_x) < 118.0:
+		danger += 1.8
+	return danger
 
 
 func _should_collect_item(player: RefCounted, items: Array, danger: float) -> bool:
@@ -93,7 +135,7 @@ func _best_item(items: Array, player: RefCounted) -> Dictionary:
 
 func _best_attack_x(player: RefCounted, enemies: Array, boss: Dictionary) -> float:
 	if not boss.is_empty():
-		return clampf(float(boss.x), 52.0, Config.W - 52.0)
+		return clampf(float(boss.x), MIN_X, MAX_X)
 	if enemies.is_empty():
 		return player.x
 
@@ -105,12 +147,12 @@ func _best_attack_x(player: RefCounted, enemies: Array, boss: Dictionary) -> flo
 		if score < best_score:
 			best_score = score
 			best = enemy
-	return clampf(float(best.x), 52.0, Config.W - 52.0)
+	return clampf(float(best.x), MIN_X, MAX_X)
 
 
 func _axis_toward(current_x: float, target_x: float, danger: float) -> float:
 	var delta := target_x - current_x
-	var dead_zone := 12.0 if danger < 1.0 else 5.0
+	var dead_zone := 10.0 if danger < 1.0 else 4.0
 	if absf(delta) <= dead_zone:
 		return 0.0
-	return clampf(delta / 78.0, -1.0, 1.0)
+	return clampf(delta / (52.0 if danger >= 1.0 else 78.0), -1.0, 1.0)
