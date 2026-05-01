@@ -4,6 +4,7 @@ class_name NovaAudioManager
 const MUSIC_BANK_LABEL := "nova_swarm"
 const MUSIC_VOLUME_DB := -14.0
 const MUSIC_DUCK_DB := -24.0
+const MUSIC_OVERDRIVE_DB := -10.0
 const MUSIC_FADE_TIME := 1.25
 
 const MUSIC_PATHS := {
@@ -26,6 +27,7 @@ var _fade_time := 0.0
 var _fade_elapsed := 0.0
 var _previous_volume_db := -80.0
 var _music_ducked := false
+var _music_overdriven := false
 var _shutting_down := false
 var _enabled := true
 var _resonate_manager: Node
@@ -86,6 +88,13 @@ func set_music_ducked(ducked: bool) -> void:
 	_apply_music_volume()
 
 
+func set_music_overdriven(overdriven: bool) -> void:
+	if _music_overdriven == overdriven:
+		return
+	_music_overdriven = overdriven
+	_apply_music_volume()
+
+
 func toggle_mute() -> void:
 	muted = not muted
 	if muted:
@@ -130,6 +139,8 @@ func _setup_sfx() -> void:
 		"hurt": _make_tone(220, 0.24, "square", 0.3, -0.36),
 		"boss": _make_tone(110, 0.72, "saw", 0.32, -0.15),
 		"clear": _make_tone(440, 0.32, "square", 0.22, 0.18),
+		"overdrive": _make_tone(880, 0.46, "triangle", 0.28, 0.55),
+		"graze": _make_tone(1180, 0.055, "square", 0.12, 0.18),
 	}
 
 
@@ -248,7 +259,9 @@ func _apply_music_volume() -> void:
 
 
 func _target_music_volume() -> float:
-	return MUSIC_DUCK_DB if _music_ducked else MUSIC_VOLUME_DB
+	if _music_ducked:
+		return MUSIC_DUCK_DB
+	return MUSIC_OVERDRIVE_DB if _music_overdriven else MUSIC_VOLUME_DB
 
 
 func _prepare_loop(stream: AudioStream) -> void:

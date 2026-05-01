@@ -20,6 +20,37 @@ func _initialize() -> void:
 	_assert(scene.player.bombs == bombs_before - 1, "bomb is consumed")
 	_assert(scene.bomb_waves.size() == 1, "bomb wave is spawned")
 
+	scene.projectiles.clear()
+	scene.player.resonance = 0.0
+	_assert(not scene.player.can_overdrive(), "overdrive is locked below full resonance")
+	scene._fire_player()
+	_assert(scene.projectiles.bullets.size() == 2, "normal shot fires two bullets")
+	_assert(scene.projectiles.bullets[0].power == 1, "normal shot uses base power")
+
+	scene.projectiles.clear()
+	scene.player.resonance = 100.0
+	scene._start_overdrive()
+	_assert(scene.player.is_overdrive_active(), "full resonance starts overdrive")
+	_assert(scene.player.resonance == 0.0, "overdrive spends resonance")
+	scene._fire_player()
+	_assert(scene.projectiles.bullets.size() == 3, "overdrive shot fires three bullets")
+	_assert(scene.projectiles.bullets.any(func(bullet: Dictionary) -> bool: return bullet.power == 2), "overdrive shot adds high power bullet")
+	scene.player.update(5.1, 0.0)
+	_assert(not scene.player.is_overdrive_active(), "overdrive expires back to normal")
+	scene.projectiles.clear()
+	scene._fire_player()
+	_assert(scene.projectiles.bullets.size() == 2, "normal shot returns after overdrive")
+
+	scene.projectiles.clear()
+	scene.player.invuln = 0.0
+	scene.player.resonance = 0.0
+	scene.projectiles.bullets.append({"x": scene.player.x + 50.0, "y": scene.player.y, "vx": 0.0, "vy": 0.0, "enemy": true, "r": 5.0, "power": 1, "color": Color.WHITE})
+	scene._check_collisions()
+	var resonance_after_graze: float = scene.player.resonance
+	_assert(resonance_after_graze > 0.0, "enemy bullet graze adds resonance")
+	scene._check_collisions()
+	_assert(scene.player.resonance == resonance_after_graze, "enemy bullet graze is awarded once")
+
 	scene.load_stage(0)
 	_assert(scene.audio_manager.current_music_key == "stage_drive", "early stages use drive music")
 	scene.swarm.enemies.clear()

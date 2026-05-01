@@ -12,9 +12,14 @@ var bomb_cd := 0.0
 var combo := 0
 var combo_timer := 0.0
 var no_miss_stage := true
+var resonance := 0.0
+var overdrive_timer := 0.0
 
 var _min_x := 42.0
 var _max_x := 918.0
+
+const RESONANCE_MAX := 100.0
+const OVERDRIVE_DURATION := 5.0
 
 
 func setup(start_x: float, start_y: float, min_x: float, max_x: float) -> void:
@@ -35,6 +40,8 @@ func reset_run(start_x: float) -> void:
 	combo = 0
 	combo_timer = 0.0
 	no_miss_stage = true
+	resonance = 0.0
+	overdrive_timer = 0.0
 
 
 func start_stage(start_x: float) -> void:
@@ -45,6 +52,7 @@ func start_stage(start_x: float) -> void:
 	combo = 0
 	combo_timer = 0.0
 	no_miss_stage = true
+	overdrive_timer = 0.0
 
 
 func update(dt: float, move_axis: float) -> void:
@@ -52,6 +60,7 @@ func update(dt: float, move_axis: float) -> void:
 	shot_cd = maxf(0.0, shot_cd - dt)
 	bomb_cd = maxf(0.0, bomb_cd - dt)
 	combo_timer = maxf(0.0, combo_timer - dt)
+	overdrive_timer = maxf(0.0, overdrive_timer - dt)
 	if combo_timer <= 0.0:
 		combo = 0
 	x = clampf(x + move_axis * 430.0 * dt, _min_x, _max_x)
@@ -62,7 +71,7 @@ func can_shoot() -> bool:
 
 
 func mark_shot() -> void:
-	shot_cd = 0.14
+	shot_cd = 0.08 if is_overdrive_active() else 0.14
 
 
 func can_bomb() -> bool:
@@ -72,6 +81,26 @@ func can_bomb() -> bool:
 func consume_bomb() -> void:
 	bomb_cd = 0.85
 	bombs -= 1
+
+
+func can_overdrive() -> bool:
+	return resonance >= RESONANCE_MAX and overdrive_timer <= 0.0
+
+
+func start_overdrive() -> void:
+	resonance = 0.0
+	overdrive_timer = OVERDRIVE_DURATION
+	shot_cd = minf(shot_cd, 0.04)
+
+
+func add_resonance(amount: float) -> void:
+	if overdrive_timer > 0.0:
+		return
+	resonance = clampf(resonance + amount, 0.0, RESONANCE_MAX)
+
+
+func is_overdrive_active() -> bool:
+	return overdrive_timer > 0.0
 
 
 func register_kill() -> float:
@@ -86,12 +115,14 @@ func hurt() -> bool:
 		invuln = 1.0
 		combo = 0
 		combo_timer = 0.0
+		overdrive_timer = 0.0
 		no_miss_stage = false
 		return false
 	lives -= 1
 	invuln = 1.8
 	combo = 0
 	combo_timer = 0.0
+	overdrive_timer = 0.0
 	no_miss_stage = false
 	return lives <= 0
 

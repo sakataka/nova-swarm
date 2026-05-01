@@ -20,6 +20,7 @@ var screen_shake := 0.0
 var flash := 0.0
 var hitstop := 0.0
 var stage_banner := 0.0
+var overdrive_zoom := 1.0
 
 var player = PlayerScript.new()
 var projectiles = ProjectileManagerScript.new()
@@ -35,6 +36,8 @@ var sprite_texture: Texture2D
 var background_texture: Texture2D
 var ui_texture: Texture2D
 var font: Font
+var overdrive_aura: CPUParticles2D
+var overdrive_burst: CPUParticles2D
 var sprites: Dictionary = Config.sprites()
 var ui_regions := {
 	"logo": Rect2(105, 44, 1045, 320),
@@ -57,6 +60,7 @@ func _ready() -> void:
 	ui_texture = _load_imported_or_png_texture("res://public/assets/ui_atlas.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
+	_setup_overdrive_particles()
 	audio_manager.play_music("title", 0.25)
 	_parse_web_query()
 	queue_redraw()
@@ -72,6 +76,42 @@ func _setup_runtime_models() -> void:
 	projectiles.setup(Config.W, Config.H, Config.HUD)
 	swarm.setup(Config.W, Config.HUD)
 	boss_controller.setup(Config.W, Config.HUD)
+
+
+func _setup_overdrive_particles() -> void:
+	overdrive_aura = CPUParticles2D.new()
+	overdrive_aura.name = "OverdriveAura"
+	overdrive_aura.amount = 42
+	overdrive_aura.lifetime = 0.5
+	overdrive_aura.local_coords = false
+	overdrive_aura.emitting = false
+	overdrive_aura.direction = Vector2(0, -1)
+	overdrive_aura.spread = 180.0
+	overdrive_aura.gravity = Vector2.ZERO
+	overdrive_aura.initial_velocity_min = 26.0
+	overdrive_aura.initial_velocity_max = 96.0
+	overdrive_aura.scale_amount_min = 1.4
+	overdrive_aura.scale_amount_max = 3.8
+	overdrive_aura.color = Color(1.0, 0.74, 0.2, 0.72)
+	add_child(overdrive_aura)
+
+	overdrive_burst = CPUParticles2D.new()
+	overdrive_burst.name = "OverdriveBurst"
+	overdrive_burst.amount = 90
+	overdrive_burst.lifetime = 0.42
+	overdrive_burst.one_shot = true
+	overdrive_burst.explosiveness = 0.95
+	overdrive_burst.local_coords = false
+	overdrive_burst.emitting = false
+	overdrive_burst.direction = Vector2(0, -1)
+	overdrive_burst.spread = 180.0
+	overdrive_burst.gravity = Vector2.ZERO
+	overdrive_burst.initial_velocity_min = 130.0
+	overdrive_burst.initial_velocity_max = 310.0
+	overdrive_burst.scale_amount_min = 2.0
+	overdrive_burst.scale_amount_max = 5.0
+	overdrive_burst.color = Color(1.0, 0.34, 0.92, 0.78)
+	add_child(overdrive_burst)
 
 
 func _setup_native_window() -> void:
@@ -130,6 +170,7 @@ func reset() -> void:
 	difficulty = 1.0
 	player.reset_run(Config.W / 2.0)
 	state = GameState.PLAYING
+	audio_manager.set_music_overdriven(false)
 	audio_manager.set_music_ducked(false)
 	load_stage(0)
 	audio_manager.play_sfx("clear")
@@ -139,6 +180,7 @@ func load_stage(index: int) -> void:
 	stage = index
 	stage_timer = 0.0
 	stage_banner = 1.65
+	overdrive_zoom = 1.0
 	projectiles.clear()
 	explosions.clear()
 	bomb_waves.clear()
@@ -170,6 +212,8 @@ func _update_game(dt: float) -> void:
 	stage_timer += dt
 	player.update(dt, _read_move_axis())
 
+	if Input.is_action_just_pressed("overdrive") and player.can_overdrive():
+		_start_overdrive()
 	if Input.is_action_pressed("shoot") and player.can_shoot():
 		_fire_player()
 	if Input.is_action_pressed("bomb") and player.can_bomb():
@@ -180,10 +224,19 @@ func _update_game(dt: float) -> void:
 	if boss_controller.update(dt, projectiles):
 		audio_manager.play_sfx("boss")
 	projectiles.update(dt)
+	_update_overdrive_feedback()
 	_update_explosions(dt)
 	_update_items(dt)
 	_check_collisions()
 	_check_stage_end()
+
+
+func _update_overdrive_feedback() -> void:
+	var active := player.is_overdrive_active()
+	if overdrive_aura:
+		overdrive_aura.global_position = Vector2(player.x, player.y + 12.0)
+		overdrive_aura.emitting = active and state == GameState.PLAYING
+	audio_manager.set_music_overdriven(active and state == GameState.PLAYING)
 
 
 func _read_move_axis() -> float:
@@ -192,8 +245,23 @@ func _read_move_axis() -> float:
 
 func _fire_player() -> void:
 	player.mark_shot()
-	projectiles.fire_player(player.x, player.y)
+	projectiles.fire_player(player.x, player.y, player.is_overdrive_active())
 	audio_manager.play_sfx("shot")
+
+
+func _start_overdrive() -> void:
+	player.start_overdrive()
+	audio_manager.set_music_overdriven(true)
+	audio_manager.play_sfx("overdrive")
+	_add_shake(4.0)
+	_add_flash(0.58, 0.025)
+	if overdrive_burst:
+		overdrive_burst.global_position = Vector2(player.x, player.y)
+		overdrive_burst.restart()
+		overdrive_burst.emitting = true
+	var tween := create_tween()
+	tween.tween_property(self, "overdrive_zoom", 1.018, 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "overdrive_zoom", 1.0, 0.24).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 
 func _use_bomb() -> void:
@@ -274,6 +342,10 @@ func _check_collisions() -> void:
 				enemy.hp -= bullet.power
 				if enemy.hp <= 0:
 					var multiplier: float = player.register_kill()
+					var close_bonus := maxf(0.0, 1.0 - Vector2(enemy.x, enemy.y).distance_to(Vector2(player.x, player.y)) / 180.0)
+					player.add_resonance(3.0 + minf(10.0, float(player.combo)) * 0.55 + close_bonus * 6.0)
+					if player.is_overdrive_active():
+						multiplier *= 1.75
 					score += int(enemy.score * multiplier)
 					explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer"]})
 					_maybe_drop_item(enemy, false)
@@ -284,7 +356,9 @@ func _check_collisions() -> void:
 		if boss_controller.is_alive() and _boss_hit_test(Vector2(bullet.x, bullet.y), bullet.r):
 			bullet.y = -999.0
 			boss_controller.boss.hp -= bullet.power
-			score += 8 + min(player.combo, 20)
+			player.add_resonance(1.4 + float(bullet.power) * 0.65)
+			var boss_score: int = 8 + min(player.combo, 20)
+			score += int(boss_score * (2.0 if player.is_overdrive_active() else 1.0))
 			explosions.append({"x": bullet.x, "y": bullet.y + 20.0, "t": 0.0, "big": false})
 			audio_manager.play_sfx("hit")
 
@@ -293,6 +367,17 @@ func _check_collisions() -> void:
 
 	if player.invuln <= 0.0:
 		var player_pos := {"x": player.x, "y": player.y}
+		for bullet in projectiles.bullets:
+			if not bullet.enemy:
+				continue
+			if bullet.get("grazed", false):
+				continue
+			var distance := _distance(bullet, player_pos)
+			if distance >= 27.0 + bullet.r and distance < 58.0 + bullet.r:
+				bullet.grazed = true
+				player.add_resonance(7.5)
+				score += 25 if player.is_overdrive_active() else 5
+				audio_manager.play_sfx("graze")
 		var hit_bullet: bool = projectiles.bullets.any(func(bullet: Dictionary) -> bool: return bullet.enemy and _distance(bullet, player_pos) < 27.0 + bullet.r)
 		var hit_enemy: bool = swarm.enemies.any(func(enemy: Dictionary) -> bool: return _distance(enemy, player_pos) < enemy.size + 22.0)
 		if hit_bullet or hit_enemy:
@@ -318,6 +403,7 @@ func _hurt() -> void:
 	audio_manager.play_sfx("hurt")
 	if dead:
 		state = GameState.GAME_OVER
+		audio_manager.set_music_overdriven(false)
 		audio_manager.set_music_ducked(false)
 		audio_manager.play_music("game_over")
 
@@ -328,6 +414,7 @@ func _check_stage_end() -> void:
 		explosions.append({"x": boss_controller.boss.x, "y": boss_controller.boss.y, "t": 0.0, "big": true})
 		boss_controller.clear()
 		state = GameState.VICTORY
+		audio_manager.set_music_overdriven(false)
 		_add_shake(7.0)
 		_add_flash(0.72, 0.04)
 		audio_manager.set_music_ducked(false)
@@ -355,10 +442,11 @@ func _draw() -> void:
 	var shake := Vector2.ZERO
 	if screen_shake > 0.0:
 		shake = Vector2(randf_range(-screen_shake, screen_shake), randf_range(-screen_shake, screen_shake)).round()
-	draw_set_transform(shake, 0.0, Vector2.ONE)
+	var zoom_offset := Vector2(Config.W, Config.H) * 0.5 * (1.0 - overdrive_zoom)
+	draw_set_transform(shake + zoom_offset, 0.0, Vector2(overdrive_zoom, overdrive_zoom))
 	draw_rect(Rect2(0, 0, Config.W, Config.H), Color("#04050a"))
 	_draw_background()
-	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.shield, player.combo, boss_controller.boss)
+	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, PlayerScript.OVERDRIVE_DURATION)
 	_draw_playfield()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if flash > 0.0:
@@ -404,6 +492,11 @@ func _draw_playfield() -> void:
 
 func _draw_player() -> void:
 	var tint := Color(1, 1, 1, 0.52) if player.invuln > 0.0 and int(stage_timer * 16.0) % 2 == 0 else Color.WHITE
+	if player.is_overdrive_active():
+		tint = Color(1.0, 0.93, 0.48, 1.0)
+		var pulse := 0.5 + sin(stage_timer * 18.0) * 0.5
+		draw_arc(Vector2(player.x, player.y), 64.0 + pulse * 8.0, 0.0, TAU, 64, Color(1.0, 0.86, 0.28, 0.48), 4.0)
+		draw_arc(Vector2(player.x, player.y), 78.0 - pulse * 6.0, 0.0, TAU, 64, Color(1.0, 0.32, 0.9, 0.32), 2.0)
 	_draw_sprite("player", player.x, player.y, 150, 150, tint)
 	if player.shield > 0:
 		draw_arc(Vector2(player.x, player.y), 55.0, 0.0, TAU, 48, Color(0.52, 0.94, 1.0, 0.56), 3.0)

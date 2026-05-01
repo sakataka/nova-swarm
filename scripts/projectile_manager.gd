@@ -17,7 +17,12 @@ func clear() -> void:
 	bullets.clear()
 
 
-func fire_player(x: float, y: float) -> void:
+func fire_player(x: float, y: float, overdrive := false) -> void:
+	if overdrive:
+		bullets.append({"x": x, "y": y - 54.0, "vx": 0.0, "vy": -760.0, "enemy": false, "r": 6.0, "power": 2, "color": Color("#fff06a")})
+		bullets.append({"x": x - 20.0, "y": y - 42.0, "vx": -95.0, "vy": -700.0, "enemy": false, "r": 5.0, "power": 1, "color": Color("#49dfff")})
+		bullets.append({"x": x + 20.0, "y": y - 42.0, "vx": 95.0, "vy": -700.0, "enemy": false, "r": 5.0, "power": 1, "color": Color("#ff7af0")})
+		return
 	bullets.append({"x": x - 12.0, "y": y - 44.0, "vx": 0.0, "vy": -660.0, "enemy": false, "r": 4.0, "power": 1, "color": Color("#49dfff")})
 	bullets.append({"x": x + 12.0, "y": y - 44.0, "vx": 0.0, "vy": -660.0, "enemy": false, "r": 4.0, "power": 1, "color": Color("#49dfff")})
 
