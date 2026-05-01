@@ -10,7 +10,7 @@ const BossControllerScript := preload("res://scripts/boss_controller.gd")
 const HudScript := preload("res://scripts/hud.gd")
 const AiPilotScript := preload("res://scripts/ai_pilot.gd")
 
-enum GameState { TITLE, PLAYING, PAUSED, GAME_OVER, VICTORY }
+enum GameState { TITLE, PLAYING, PAUSED, GAME_OVER, VICTORY, UPGRADE }
 enum ControlMode { MANUAL, AI }
 
 var state := GameState.TITLE
@@ -25,6 +25,18 @@ var flash := 0.0
 var hitstop := 0.0
 var stage_banner := 0.0
 var overdrive_zoom := 1.0
+var bomb_range_scale := 1.0
+var item_drop_bonus := 0.0
+var upgrade_options: Array[Dictionary] = []
+var upgrade_selected := 0
+var upgrade_timer := 0.0
+var pending_stage := 0
+var stage_results: Array[Dictionary] = []
+var _stage_start_score := 0
+var _stage_start_time := 0.0
+var _stage_damage := 0
+var _stage_bombs_used := 0
+var _stage_max_combo := 0
 
 var player = PlayerScript.new()
 var projectiles = ProjectileManagerScript.new()
@@ -40,6 +52,8 @@ var items: Array[Dictionary] = []
 var sprite_texture: Texture2D
 var background_texture: Texture2D
 var ui_texture: Texture2D
+var commander_texture: Texture2D
+var commander_fx_texture: Texture2D
 var font: Font
 var overdrive_aura: CPUParticles2D
 var overdrive_burst: CPUParticles2D
@@ -63,6 +77,8 @@ func _ready() -> void:
 	sprite_texture = _load_sprite_texture()
 	background_texture = load("res://public/assets/backgrounds.png")
 	ui_texture = _load_imported_or_png_texture("res://public/assets/ui_atlas.png")
+	commander_texture = _load_imported_or_png_texture("res://public/assets/commander.png")
+	commander_fx_texture = _load_imported_or_png_texture("res://public/assets/commander_fx.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
 	_setup_overdrive_particles()
@@ -141,6 +157,8 @@ func _process(delta: float) -> void:
 		return
 	if state == GameState.PLAYING:
 		_update_game(dt)
+	elif state == GameState.UPGRADE:
+		_update_upgrade(dt)
 	_update_feedback(dt)
 	audio_manager.update_music(dt)
 	queue_redraw()
@@ -155,6 +173,12 @@ func _update_feedback(dt: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if state == GameState.TITLE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
 		_toggle_selected_control_mode()
+		get_viewport().set_input_as_handled()
+	elif state == GameState.UPGRADE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
+		_move_upgrade_selection(-1 if event.is_action_pressed("move_left") else 1)
+		get_viewport().set_input_as_handled()
+	elif state == GameState.UPGRADE and event.is_action_pressed("ui_accept"):
+		_apply_selected_upgrade()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_accept") and state in [GameState.TITLE, GameState.GAME_OVER, GameState.VICTORY]:
 		reset()
@@ -179,6 +203,12 @@ func reset() -> void:
 	stage = 0
 	score = 0
 	difficulty = 1.0
+	bomb_range_scale = 1.0
+	item_drop_bonus = 0.0
+	upgrade_options.clear()
+	upgrade_selected = 0
+	upgrade_timer = 0.0
+	stage_results.clear()
 	control_mode = selected_control_mode
 	player.reset_run(Config.W / 2.0)
 	state = GameState.PLAYING
@@ -200,6 +230,7 @@ func load_stage(index: int) -> void:
 	swarm.clear()
 	boss_controller.clear()
 	player.start_stage(Config.W / 2.0)
+	_start_stage_metrics()
 	_recalculate_difficulty()
 	flash = maxf(flash, 0.18)
 
@@ -241,7 +272,14 @@ func _update_game(dt: float) -> void:
 	_update_explosions(dt)
 	_update_items(dt)
 	_check_collisions()
+	_stage_max_combo = maxi(_stage_max_combo, player.combo)
 	_check_stage_end()
+
+
+func _update_upgrade(dt: float) -> void:
+	upgrade_timer += dt
+	if control_mode == ControlMode.AI and upgrade_timer >= 0.75:
+		_apply_selected_upgrade()
 
 
 func _update_overdrive_feedback() -> void:
@@ -272,6 +310,57 @@ func _toggle_control_mode() -> void:
 	selected_control_mode = control_mode
 
 
+func _move_upgrade_selection(direction: int) -> void:
+	if upgrade_options.is_empty():
+		return
+	upgrade_selected = posmod(upgrade_selected + direction, upgrade_options.size())
+
+
+func _begin_upgrade(next_stage: int) -> void:
+	pending_stage = next_stage
+	state = GameState.UPGRADE
+	upgrade_selected = 0
+	upgrade_timer = 0.0
+	upgrade_options = _roll_upgrade_options()
+	audio_manager.set_music_ducked(true)
+
+
+func _roll_upgrade_options() -> Array[Dictionary]:
+	var pool: Array = Config.UPGRADE_POOL.duplicate(true)
+	pool.shuffle()
+	var result: Array[Dictionary] = []
+	for i in range(mini(3, pool.size())):
+		result.append(pool[i])
+	return result
+
+
+func _apply_selected_upgrade() -> void:
+	if state != GameState.UPGRADE or upgrade_options.is_empty():
+		return
+	var upgrade: Dictionary = upgrade_options[upgrade_selected]
+	_apply_upgrade(upgrade.id)
+	upgrade_options.clear()
+	audio_manager.set_music_ducked(false)
+	state = GameState.PLAYING
+	load_stage(pending_stage)
+
+
+func _apply_upgrade(upgrade_id: String) -> void:
+	if upgrade_id == "rapid":
+		player.shot_cooldown_scale = maxf(0.68, player.shot_cooldown_scale * 0.88)
+	elif upgrade_id == "overdrive":
+		player.overdrive_duration_bonus += 1.1
+	elif upgrade_id == "resonance":
+		player.resonance_gain_scale *= 1.16
+	elif upgrade_id == "bomb":
+		bomb_range_scale += 0.18
+	elif upgrade_id == "shield":
+		player.shield_max = mini(5, player.shield_max + 1)
+		player.shield = mini(player.shield_max, player.shield + 1)
+	elif upgrade_id == "drop":
+		item_drop_bonus += 0.045
+
+
 func _fire_player() -> void:
 	player.mark_shot()
 	projectiles.fire_player(player.x, player.y, player.is_overdrive_active())
@@ -295,11 +384,12 @@ func _start_overdrive() -> void:
 
 func _use_bomb() -> void:
 	player.consume_bomb()
+	_stage_bombs_used += 1
 	audio_manager.play_sfx("bomb")
 	_add_shake(3.0)
 	_add_flash(0.42, 0.18)
 	hitstop = 0.025
-	var blast := {"x": player.x, "y": player.y - 54.0, "t": 0.0, "width": 172.0}
+	var blast := {"x": player.x, "y": player.y - 54.0, "t": 0.0, "width": 172.0 * bomb_range_scale}
 	bomb_waves.append(blast)
 
 	var kept_bullets: Array[Dictionary] = []
@@ -313,7 +403,10 @@ func _use_bomb() -> void:
 			enemy.hp = 0
 			explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer"]})
 			score += int(enemy.score * 0.6)
-			_maybe_drop_item(enemy, true)
+			if enemy.kind == "commander":
+				_handle_commander_defeat(enemy)
+			else:
+				_maybe_drop_item(enemy, true)
 	swarm.remove_dead()
 
 	if boss_controller.is_alive() and absf(boss_controller.boss.x - blast.x) < 205.0:
@@ -343,9 +436,11 @@ func _update_items(dt: float) -> void:
 
 
 func _maybe_drop_item(enemy: Dictionary, from_bomb: bool) -> void:
-	var base_chance := 0.08
+	var base_chance := 0.08 + item_drop_bonus
 	if enemy.kind in ["armor", "saucer"]:
 		base_chance += 0.06
+	if enemy.kind == "commander":
+		base_chance += 0.46
 	if player.lives <= 1:
 		base_chance += 0.07
 	if from_bomb:
@@ -376,8 +471,11 @@ func _check_collisions() -> void:
 					if player.is_overdrive_active():
 						multiplier *= 1.75
 					score += int(enemy.score * multiplier)
-					explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer"]})
-					_maybe_drop_item(enemy, false)
+					explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer", "commander"]})
+					if enemy.kind == "commander":
+						_handle_commander_defeat(enemy)
+					else:
+						_maybe_drop_item(enemy, false)
 					audio_manager.play_sfx("boom")
 				else:
 					audio_manager.play_sfx("hit")
@@ -423,6 +521,7 @@ func _check_collisions() -> void:
 
 
 func _hurt() -> void:
+	_stage_damage += 1
 	var dead: bool = player.hurt()
 	projectiles.clear_enemy_bullets()
 	explosions.append({"x": player.x, "y": player.y, "t": 0.0, "big": true})
@@ -431,6 +530,8 @@ func _hurt() -> void:
 	hitstop = 0.055
 	audio_manager.play_sfx("hurt")
 	if dead:
+		if not _has_stage_result(stage):
+			_record_stage_result()
 		state = GameState.GAME_OVER
 		audio_manager.set_music_overdriven(false)
 		audio_manager.set_music_ducked(false)
@@ -440,6 +541,7 @@ func _hurt() -> void:
 func _check_stage_end() -> void:
 	if not boss_controller.boss.is_empty() and boss_controller.boss.hp <= 0:
 		score += 8000 + (2500 if player.no_miss_stage else 0)
+		_record_stage_result()
 		explosions.append({"x": boss_controller.boss.x, "y": boss_controller.boss.y, "t": 0.0, "big": true})
 		boss_controller.clear()
 		state = GameState.VICTORY
@@ -453,9 +555,91 @@ func _check_stage_end() -> void:
 
 	if not Config.STAGES[stage].boss and swarm.enemies.is_empty():
 		score += 1000 + stage * 500 + (900 if player.no_miss_stage else 0)
+		_record_stage_result()
 		player.bombs = mini(5, player.bombs + 1)
 		audio_manager.play_sfx("clear")
-		load_stage(stage + 1)
+		_begin_upgrade(stage + 1)
+
+
+func _start_stage_metrics() -> void:
+	_stage_start_score = score
+	_stage_start_time = stage_timer
+	_stage_damage = 0
+	_stage_bombs_used = 0
+	_stage_max_combo = 0
+
+
+func _record_stage_result() -> void:
+	var score_gain := score - _stage_start_score
+	var clear_time := maxf(0.0, stage_timer - _stage_start_time)
+	var result := {
+		"stage": stage,
+		"name": Config.STAGES[stage].name,
+		"score": score_gain,
+		"chain": _stage_max_combo,
+		"damage": _stage_damage,
+		"bombs": _stage_bombs_used,
+		"time": clear_time,
+		"rank": _rank_for_stage(stage, score_gain, _stage_max_combo, _stage_damage, _stage_bombs_used, clear_time),
+	}
+	if stage_results.size() > stage and stage_results[stage].stage == stage:
+		stage_results[stage] = result
+	else:
+		stage_results.append(result)
+
+
+func _has_stage_result(stage_index: int) -> bool:
+	return stage_results.any(func(result: Dictionary) -> bool: return int(result.stage) == stage_index)
+
+
+func _rank_for_stage(stage_index: int, score_gain: int, max_chain: int, damage: int, bombs_used: int, clear_time: float) -> String:
+	var score_targets := [4200.0, 6200.0, 8200.0, 10200.0, 11800.0]
+	var target: float = score_targets[clampi(stage_index, 0, score_targets.size() - 1)]
+	var points := minf(1.25, float(score_gain) / target) * 70.0
+	points += minf(20.0, float(max_chain) * 1.15)
+	points += 12.0 if damage == 0 else maxf(0.0, 7.0 - float(damage) * 2.2)
+	points += 8.0 if bombs_used == 0 else maxf(0.0, 4.0 - float(bombs_used))
+	points += 8.0 if clear_time <= 38.0 else 4.0 if clear_time <= 55.0 else 0.0
+	if points >= 112.0:
+		return "SSS"
+	if points >= 100.0:
+		return "SS"
+	if points >= 88.0:
+		return "S"
+	if points >= 74.0:
+		return "A"
+	if points >= 58.0:
+		return "B"
+	return "C"
+
+
+func _handle_commander_defeat(enemy: Dictionary) -> void:
+	player.add_resonance(26.0)
+	_add_shake(4.6)
+	_add_flash(0.42, 0.025)
+	for i in range(5):
+		explosions.append({"x": enemy.x + sin(float(i) * 1.7) * 54.0, "y": enemy.y + cos(float(i) * 1.3) * 42.0, "t": -float(i) * 0.025, "big": true})
+	for other in swarm.enemies:
+		if other.id == enemy.id or other.hp <= 0:
+			continue
+		if Vector2(other.x, other.y).distance_to(Vector2(enemy.x, enemy.y)) < 155.0:
+			other.hp -= 1
+			explosions.append({"x": other.x, "y": other.y, "t": 0.0, "big": false})
+	var kept_bullets: Array[Dictionary] = []
+	for bullet in projectiles.bullets:
+		if not bullet.enemy or Vector2(bullet.x, bullet.y).distance_to(Vector2(enemy.x, enemy.y)) > 185.0:
+			kept_bullets.append(bullet)
+	projectiles.bullets = kept_bullets
+	_drop_commander_reward(enemy)
+
+
+func _drop_commander_reward(enemy: Dictionary) -> void:
+	var item_kind := "shield"
+	if player.bombs <= 2:
+		item_kind = "bomb"
+	if player.lives <= 2:
+		item_kind = "life"
+	items.append({"kind": item_kind, "x": enemy.x, "y": enemy.y, "vy": 82.0, "t": 0.0})
 
 
 func _add_shake(amount: float) -> void:
@@ -475,7 +659,7 @@ func _draw() -> void:
 	draw_set_transform(shake + zoom_offset, 0.0, Vector2(overdrive_zoom, overdrive_zoom))
 	draw_rect(Rect2(0, 0, Config.W, Config.H), Color("#04050a"))
 	_draw_background()
-	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, PlayerScript.OVERDRIVE_DURATION)
+	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration())
 	_draw_control_mode_badge()
 	_draw_playfield()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -554,10 +738,32 @@ func _draw_player_shield() -> void:
 
 
 func _draw_enemy(enemy: Dictionary) -> void:
+	if enemy.kind == "commander":
+		_draw_commander(enemy)
+		return
 	var tint := Color.WHITE
 	if enemy.max_hp > 1:
 		tint = Color(1.0, 0.85 + 0.15 * float(enemy.hp) / float(enemy.max_hp), 0.72 + 0.28 * float(enemy.hp) / float(enemy.max_hp), 1.0)
 	_draw_sprite(enemy.kind, enemy.x, enemy.y, enemy.size * 2.35, enemy.size * 2.35, tint)
+
+
+func _draw_commander(enemy: Dictionary) -> void:
+	var pulse := 0.5 + sin(stage_timer * 6.4 + enemy.id) * 0.5
+	var center := Vector2(enemy.x, enemy.y)
+	if commander_fx_texture:
+		var fx_size := 150.0 + pulse * 16.0
+		draw_texture_rect(commander_fx_texture, Rect2(center.x - fx_size / 2.0, center.y - fx_size / 2.0, fx_size, fx_size), false, Color(1.0, 1.0, 1.0, 0.45 + pulse * 0.22))
+	else:
+		draw_arc(center, 76.0 + pulse * 8.0, 0.0, TAU, 48, Color(1.0, 0.42, 0.92, 0.45), 4.0)
+	var hp_ratio := clampf(float(enemy.hp) / maxf(1.0, float(enemy.max_hp)), 0.0, 1.0)
+	var tint := Color(1.0, 0.82 + hp_ratio * 0.18, 0.9 + hp_ratio * 0.1, 1.0)
+	if commander_texture:
+		var size: float = float(enemy.size) * 2.45
+		draw_texture_rect(commander_texture, Rect2(center.x - size / 2.0, center.y - size / 2.0, size, size), false, tint)
+	else:
+		_draw_sprite("saucer", enemy.x, enemy.y, enemy.size * 2.4, enemy.size * 2.4, tint)
+	draw_rect(Rect2(center.x - 44.0, center.y + enemy.size + 12.0, 88.0, 5.0), Color(1, 1, 1, 0.16))
+	draw_rect(Rect2(center.x - 44.0, center.y + enemy.size + 12.0, 88.0 * hp_ratio, 5.0), Color("#ff5ff0"))
 
 
 func _draw_boss() -> void:
@@ -626,6 +832,9 @@ func _draw_sprite(key: String, cx: float, cy: float, dw: float, dh: float, tint 
 
 func _draw_overlay() -> void:
 	draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(0, 0, 0, 0.66))
+	if state == GameState.UPGRADE:
+		_draw_upgrade_overlay()
+		return
 	var title := "NOVA SWARM"
 	if state == GameState.PAUSED:
 		title = "PAUSED"
@@ -641,13 +850,81 @@ func _draw_overlay() -> void:
 		hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 440, 17, Color(0.89, 0.98, 1.0, 0.82))
 	elif state == GameState.VICTORY and ui_texture:
 		draw_texture_rect_region(ui_texture, Rect2(146, Config.HUD + 72, 668, 210), ui_regions.ending)
-		_draw_arcade_title(title, Config.HUD + 330.0, 44, Color("#dffcff"))
-		hud.draw_centered(self, font, "FINAL SCORE " + str(score).pad_zeros(7), Config.HUD + 382, 22, Color("#ffef8b"))
-		hud.draw_centered(self, font, _control_mode_label(control_mode) + " / PRESS ENTER TO START", Config.HUD + 430, 20, Color("#ff7af0"))
+		_draw_arcade_title(title, Config.HUD + 304.0, 44, Color("#dffcff"))
+		hud.draw_centered(self, font, "FINAL SCORE " + str(score).pad_zeros(7), Config.HUD + 356, 22, Color("#ffef8b"))
+		_draw_results_table(Config.HUD + 394.0)
+		hud.draw_centered(self, font, _control_mode_label(control_mode) + " / PRESS ENTER TO START", Config.HUD + 636, 18, Color("#ff7af0"))
 	else:
 		_draw_arcade_title(title, Config.HUD + 214.0, 58, Color("#dffcff"))
 		hud.draw_centered(self, font, sub, Config.HUD + 292, 22, Color("#ff7af0"))
-		hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 340, 17, Color(0.89, 0.98, 1.0, 0.82))
+		if state == GameState.GAME_OVER and not stage_results.is_empty():
+			_draw_results_table(Config.HUD + 334.0)
+		else:
+			hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 340, 17, Color(0.89, 0.98, 1.0, 0.82))
+
+
+func _draw_upgrade_overlay() -> void:
+	var last_rank := ""
+	if not stage_results.is_empty():
+		var last_result: Dictionary = stage_results[stage_results.size() - 1]
+		last_rank = "STAGE " + str(int(last_result.stage) + 1) + " RANK " + str(last_result.rank)
+	_draw_arcade_title("SYSTEM UPGRADE", Config.HUD + 126.0, 42, Color("#dffcff"))
+	hud.draw_centered(self, font, last_rank, Config.HUD + 178.0, 20, Color("#ffef8b"))
+	var card_w := 250.0
+	var card_h := 148.0
+	var gap := 28.0
+	var start_x := (Config.W - card_w * 3.0 - gap * 2.0) / 2.0
+	for i in range(upgrade_options.size()):
+		var option: Dictionary = upgrade_options[i]
+		var x := start_x + float(i) * (card_w + gap)
+		var y := Config.HUD + 238.0
+		var selected := i == upgrade_selected
+		var color := Color("#fff06a") if selected else Color("#49dfff")
+		draw_rect(Rect2(x, y, card_w, card_h), Color(0.02, 0.06, 0.12, 0.84))
+		draw_rect(Rect2(x, y, card_w, card_h), Color(color, 0.7 if selected else 0.34), false, 2.0)
+		if selected:
+			draw_rect(Rect2(x + 5.0, y + 5.0, card_w - 10.0, card_h - 10.0), Color(color, 0.12))
+		_draw_centered_in_width(str(option.name), x, card_w, y + 48.0, 19, color)
+		_draw_centered_in_width(str(option.desc), x, card_w, y + 90.0, 15, Color(0.89, 0.98, 1.0, 0.82))
+	hud.draw_centered(self, font, "LEFT / RIGHT SELECT   ENTER CONFIRM", Config.HUD + 452.0, 18, Color("#ff7af0"))
+
+
+func _draw_centered_in_width(text: String, x: float, width: float, y: float, size: int, color: Color) -> void:
+	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+	draw_string(font, Vector2(x + (width - text_size.x) / 2.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+
+
+func _draw_results_table(y: float) -> void:
+	var x := 128.0
+	var row_h := 31.0
+	var headers := ["STAGE", "SCORE", "CHAIN", "DMG", "BOMB", "RANK"]
+	var cols := [x, x + 230.0, x + 382.0, x + 500.0, x + 590.0, x + 704.0]
+	draw_rect(Rect2(x - 24.0, y - 28.0, 760.0, row_h * 6.0 + 34.0), Color(0.02, 0.06, 0.12, 0.72))
+	draw_rect(Rect2(x - 24.0, y - 28.0, 760.0, row_h * 6.0 + 34.0), Color(0.33, 0.91, 1.0, 0.28), false, 1.0)
+	for i in range(headers.size()):
+		draw_string(font, Vector2(cols[i], y), headers[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.89, 0.98, 1.0, 0.66))
+	for r in range(stage_results.size()):
+		var result: Dictionary = stage_results[r]
+		var row_y := y + 30.0 + float(r) * row_h
+		var rank_color := _rank_color(str(result.rank))
+		draw_string(font, Vector2(cols[0], row_y), str(result.name), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#dffcff"))
+		draw_string(font, Vector2(cols[1], row_y), str(result.score).pad_zeros(5), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#7df7ff"))
+		draw_string(font, Vector2(cols[2], row_y), str(result.chain), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ffef8b"))
+		draw_string(font, Vector2(cols[3], row_y), str(result.damage), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ff9aa8"))
+		draw_string(font, Vector2(cols[4], row_y), str(result.bombs), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ff7af0"))
+		draw_string(font, Vector2(cols[5], row_y), str(result.rank), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, rank_color)
+
+
+func _rank_color(rank: String) -> Color:
+	if rank in ["SSS", "SS"]:
+		return Color("#fff06a")
+	if rank == "S":
+		return Color("#ff7af0")
+	if rank == "A":
+		return Color("#72eaff")
+	if rank == "B":
+		return Color("#81ff88")
+	return Color(0.89, 0.98, 1.0, 0.72)
 
 
 func _draw_control_mode_badge() -> void:
@@ -759,9 +1036,10 @@ func _load_png_texture(path: String) -> Texture2D:
 
 
 func _load_imported_or_png_texture(path: String) -> Texture2D:
-	var imported := load(path)
-	if imported is Texture2D:
-		return imported
+	if ResourceLoader.exists(path):
+		var imported := load(path)
+		if imported is Texture2D:
+			return imported
 	return _load_png_texture(path)
 
 

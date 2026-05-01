@@ -26,7 +26,17 @@ const ENEMY_STATS := {
 	"zig": {"hp": 1, "score": 180, "size": 36.0, "color": Color("#39eaff"), "role": "weaver"},
 	"armor": {"hp": 2, "score": 420, "size": 46.0, "color": Color("#8dff5d"), "role": "tank"},
 	"saucer": {"hp": 1, "score": 360, "size": 44.0, "color": Color("#ff57f0"), "role": "flanker"},
+	"commander": {"hp": 7, "score": 1600, "size": 64.0, "color": Color("#ff5ff0"), "role": "commander"},
 }
+
+const UPGRADE_POOL := [
+	{"id": "rapid", "name": "RAPID ARRAY", "desc": "SHOT RATE UP"},
+	{"id": "overdrive", "name": "CORE EXTENDER", "desc": "OVERDRIVE TIME UP"},
+	{"id": "resonance", "name": "GRAZE AMP", "desc": "RESONANCE GAIN UP"},
+	{"id": "bomb", "name": "BOMB LENS", "desc": "BOMB WIDTH UP"},
+	{"id": "shield", "name": "SHIELD CELL", "desc": "SHIELD MAX UP"},
+	{"id": "drop", "name": "SALVAGE LINK", "desc": "ITEM DROP UP"},
+]
 
 const BG_PANELS := [
 	Rect2(14, 12, 599, 431),

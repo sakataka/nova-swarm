@@ -83,4 +83,6 @@ func _state_name(scene: Node) -> String:
 		return "GAME_OVER"
 	if scene.state == scene.GameState.VICTORY:
 		return "VICTORY"
+	if scene.state == scene.GameState.UPGRADE:
+		return "UPGRADE"
 	return "UNKNOWN"

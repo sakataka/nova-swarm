@@ -28,6 +28,11 @@ func fire_player(x: float, y: float, overdrive := false) -> void:
 
 
 func fire_enemy(enemy: Dictionary, player_x: float, enemy_stats: Dictionary) -> void:
+	if enemy.kind == "commander":
+		var aim := clampf((player_x - enemy.x) * 0.18, -86.0, 86.0)
+		for side in [-1, 0, 1]:
+			bullets.append({"x": enemy.x + side * 22.0, "y": enemy.y + 34.0, "vx": aim + side * 58.0, "vy": 238.0 + absf(side) * 18.0, "enemy": true, "r": 6.0, "power": 1, "color": Color("#ff5ff0") if side != 0 else Color("#fff06a")})
+		return
 	if enemy.kind == "saucer":
 		for side in [-1, 1]:
 			bullets.append({"x": enemy.x, "y": enemy.y + 22.0, "vx": side * 70.0, "vy": 215.0, "enemy": true, "r": 5.0, "power": 1, "color": Color("#ff63f7")})

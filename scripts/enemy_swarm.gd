@@ -48,6 +48,24 @@ func load_stage(stage_data: Dictionary, enemy_stats: Dictionary, difficulty: flo
 				"size": float(stats.size),
 			})
 			next_id += 1
+	if stage_data.rows > 0:
+		var stats: Dictionary = enemy_stats["commander"]
+		enemies.append({
+			"id": next_id,
+			"kind": "commander",
+			"x": width / 2.0,
+			"y": start_y - 12.0,
+			"base_x": width / 2.0,
+			"base_y": start_y - 12.0,
+			"hp": int(stats.hp) + int(difficulty),
+			"max_hp": int(stats.hp) + int(difficulty),
+			"t": randf() * 10.0,
+			"dive": 0.0,
+			"shoot": maxf(0.45, 1.15 / difficulty),
+			"score": int(stats.score),
+			"size": float(stats.size),
+		})
+		next_id += 1
 
 
 func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: float, difficulty: float, player_x: float, projectiles: RefCounted, enemy_stats: Dictionary) -> void:
@@ -56,10 +74,14 @@ func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: fl
 	var edge := enemies.any(func(enemy: Dictionary) -> bool: return enemy.x < 54.0 or enemy.x > width - 54.0)
 	if edge:
 		swarm_dir *= -1.0
+	var commander_alive := enemies.any(func(enemy: Dictionary) -> bool: return enemy.kind == "commander" and enemy.hp > 0)
+	var command_fire_mult := 1.22 if commander_alive else 1.0
+	var command_dive_mult := 1.28 if commander_alive else 1.0
 
 	for enemy in enemies:
 		enemy.t += dt
-		if enemy.dive <= 0.0 and randf() < stage_data.dive * difficulty * dt * 0.035:
+		var is_commander: bool = enemy.kind == "commander"
+		if enemy.dive <= 0.0 and not is_commander and randf() < stage_data.dive * difficulty * command_dive_mult * dt * 0.035:
 			enemy.dive = 1.0
 		if enemy.dive > 0.0:
 			enemy.y += (120.0 + stage_index * 24.0) * dt
@@ -68,15 +90,21 @@ func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: fl
 				enemy.y = hud_y + 50.0
 				enemy.x = enemy.base_x
 				enemy.dive = 0.0
+		elif is_commander:
+			enemy.x = enemy.base_x + sin(stage_timer * 1.15 + enemy.id) * 82.0
+			enemy.y = enemy.base_y + sin(stage_timer * 1.85 + enemy.id) * 12.0
 		else:
 			enemy.x += swarm_dir * stage_data.speed * difficulty * dt
 			enemy.y = enemy.base_y + sin(stage_timer * 1.6 + enemy.id) * 9.0
 
 		enemy.shoot -= dt
 		if enemy.shoot <= 0.0:
-			var chance: float = stage_data.fire * difficulty * (1.7 if enemy.kind == "saucer" else 1.0)
+			var kind_mult := 1.7 if enemy.kind == "saucer" else 1.45 if is_commander else 1.0
+			var chance: float = stage_data.fire * difficulty * command_fire_mult * kind_mult
 			enemy.shoot = 1.2 + randf() * 3.4 / maxf(0.55, chance)
-			if randf() < 0.2 + stage_index * 0.035 or enemy.dive > 0.0:
+			if is_commander:
+				projectiles.fire_enemy(enemy, player_x, enemy_stats)
+			elif randf() < 0.2 + stage_index * 0.035 or enemy.dive > 0.0:
 				projectiles.fire_enemy(enemy, player_x, enemy_stats)
 
 

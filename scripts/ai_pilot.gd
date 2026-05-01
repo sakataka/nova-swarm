@@ -16,7 +16,7 @@ func get_command(player: RefCounted, enemies: Array, boss: Dictionary, bullets: 
 
 	var immediate_danger := _danger_at_x(player.x, player, bullets, enemies, boss)
 	var intent_x := _choose_intent_x(player, enemies, boss, items, immediate_danger)
-	var lane := _choose_lane(player, bullets, enemies, boss, items, intent_x)
+	var lane := _choose_lane(player, bullets, enemies, boss, items, intent_x, enemies.size())
 	var target_x: float = lane["x"]
 	var danger: float = lane["danger"]
 	command.move_axis = _axis_toward(player.x, target_x, danger)
@@ -25,14 +25,14 @@ func get_command(player: RefCounted, enemies: Array, boss: Dictionary, bullets: 
 
 
 func _choose_intent_x(player: RefCounted, enemies: Array, boss: Dictionary, items: Array, danger: float) -> float:
-	if _should_chase_item(player, items, danger):
+	if _should_chase_item(player, items, danger, enemies.size()):
 		return _best_item(items, player).x
 	if not enemies.is_empty() or not boss.is_empty():
 		return _best_attack_x(player, enemies, boss)
 	return player.x
 
 
-func _choose_lane(player: RefCounted, bullets: Array, enemies: Array, boss: Dictionary, items: Array, intent_x: float) -> Dictionary:
+func _choose_lane(player: RefCounted, bullets: Array, enemies: Array, boss: Dictionary, items: Array, intent_x: float, enemy_count: int) -> Dictionary:
 	var candidates := _candidate_lanes(player.x, intent_x)
 	var best_x: float = player.x
 	var best_score := INF
@@ -43,7 +43,7 @@ func _choose_lane(player: RefCounted, bullets: Array, enemies: Array, boss: Dict
 		var travel_cost := absf(x - player.x) * (0.002 if danger < 1.0 else 0.004)
 		var intent_cost := absf(x - intent_x) * (0.006 if danger < 1.0 else 0.0008)
 		var edge_cost := 0.18 if x < 86.0 or x > Config.W - 86.0 else 0.0
-		var item_bonus := _item_lane_bonus(x, player, items, danger)
+		var item_bonus := _item_lane_bonus(x, player, items, danger, enemy_count)
 		var score := danger * 4.2 + travel_cost + intent_cost + edge_cost - item_bonus
 		if score < best_score:
 			best_score = score
@@ -111,16 +111,17 @@ func _danger_at_x(test_x: float, player: RefCounted, bullets: Array, enemies: Ar
 	return danger
 
 
-func _should_chase_item(player: RefCounted, items: Array, danger: float) -> bool:
+func _should_chase_item(player: RefCounted, items: Array, danger: float, enemy_count: int) -> bool:
 	if items.is_empty() or danger > 0.85:
 		return false
 	var item := _best_item(items, player)
 	var urgent: bool = (item.kind == "life" and player.lives <= 2) or (item.kind == "shield" and player.shield <= 0) or (item.kind == "bomb" and player.bombs <= 1)
-	var close_x := absf(item.x - player.x) < (210.0 if urgent else 120.0)
-	return urgent and close_x and item.y > player.y - 250.0 and item.y < player.y + 28.0
+	var end_stage_pickup: bool = enemy_count <= 1 and item.y > player.y - 320.0
+	var close_x: bool = absf(item.x - player.x) < (210.0 if end_stage_pickup else 210.0 if urgent else 120.0)
+	return (urgent or end_stage_pickup) and close_x and item.y > player.y - 280.0 and item.y < player.y + 28.0
 
 
-func _item_lane_bonus(test_x: float, player: RefCounted, items: Array, danger: float) -> float:
+func _item_lane_bonus(test_x: float, player: RefCounted, items: Array, danger: float, enemy_count: int) -> float:
 	if items.is_empty() or danger > 0.85:
 		return 0.0
 	var bonus := 0.0
@@ -137,6 +138,8 @@ func _item_lane_bonus(test_x: float, player: RefCounted, items: Array, danger: f
 			priority = 0.54
 		elif item.kind == "bomb" and player.bombs <= 2:
 			priority = 0.48
+		if enemy_count <= 1:
+			priority += 0.26
 		var approach := clampf(1.0 - horizontal / 92.0, 0.0, 1.0)
 		var timing := clampf(1.0 - absf(item.y - (player.y - 120.0)) / 260.0, 0.0, 1.0)
 		bonus = maxf(bonus, priority * approach * (0.5 + timing * 0.5))

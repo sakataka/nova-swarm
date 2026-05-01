@@ -14,6 +14,10 @@ var combo_timer := 0.0
 var no_miss_stage := true
 var resonance := 0.0
 var overdrive_timer := 0.0
+var shot_cooldown_scale := 1.0
+var overdrive_duration_bonus := 0.0
+var resonance_gain_scale := 1.0
+var shield_max := 2
 
 var _min_x := 42.0
 var _max_x := 918.0
@@ -42,6 +46,7 @@ func reset_run(start_x: float) -> void:
 	no_miss_stage = true
 	resonance = 0.0
 	overdrive_timer = 0.0
+	reset_upgrade_modifiers()
 
 
 func start_stage(start_x: float) -> void:
@@ -71,7 +76,7 @@ func can_shoot() -> bool:
 
 
 func mark_shot() -> void:
-	shot_cd = 0.08 if is_overdrive_active() else 0.14
+	shot_cd = (0.08 if is_overdrive_active() else 0.14) * shot_cooldown_scale
 
 
 func can_bomb() -> bool:
@@ -89,14 +94,14 @@ func can_overdrive() -> bool:
 
 func start_overdrive() -> void:
 	resonance = 0.0
-	overdrive_timer = OVERDRIVE_DURATION
+	overdrive_timer = get_overdrive_duration()
 	shot_cd = minf(shot_cd, 0.04)
 
 
 func add_resonance(amount: float) -> void:
 	if overdrive_timer > 0.0:
 		return
-	resonance = clampf(resonance + amount, 0.0, RESONANCE_MAX)
+	resonance = clampf(resonance + amount * resonance_gain_scale, 0.0, RESONANCE_MAX)
 
 
 func is_overdrive_active() -> bool:
@@ -133,4 +138,15 @@ func apply_item(item_kind: String) -> void:
 	elif item_kind == "bomb":
 		bombs = mini(5, bombs + 1)
 	elif item_kind == "shield":
-		shield = mini(2, shield + 1)
+		shield = mini(shield_max, shield + 1)
+
+
+func get_overdrive_duration() -> float:
+	return OVERDRIVE_DURATION + overdrive_duration_bonus
+
+
+func reset_upgrade_modifiers() -> void:
+	shot_cooldown_scale = 1.0
+	overdrive_duration_bonus = 0.0
+	resonance_gain_scale = 1.0
+	shield_max = 2
