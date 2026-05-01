@@ -40,6 +40,7 @@ scripts/smoke_test.gd
 scripts/gameplay_test.gd
 public/assets/spritesheet.png
 public/assets/backgrounds.png
+public/assets/ui_atlas.png
 export_presets.cfg
 ```
 
@@ -58,6 +59,7 @@ export_presets.cfg
 
 - `public/assets/spritesheet.png`: 自機、敵、弾、爆発、ボスなどの4x4固定グリッドスプライト
 - `public/assets/backgrounds.png`: 5ステージ分の宇宙背景アトラス
+- `public/assets/ui_atlas.png`: タイトルロゴ、アイテムアイコン、ステージバナー、エンディング絵のUIアトラス
 
 ## ゲーム品質改善
 
@@ -65,6 +67,8 @@ export_presets.cfg
 - スコアチェイン、ノーミスステージボーナス、成績に応じた軽い難易度補正を追加しています。
 - 爆発、被弾、ボム、ステージ開始、ボス攻撃に画面揺れ、フラッシュ、ヒットストップ、予兆を追加しています。
 - `armor` は2HPになり、敵ごとの役割差が出るようにしています。
+- ボスの当たり判定は矩形ではなく複数の円形ゾーンで扱い、見た目から外れた弾が消えにくいようにしています。
+- ボスHPを調整し、終盤の硬さを少し抑えています。
 
 ## 検証
 

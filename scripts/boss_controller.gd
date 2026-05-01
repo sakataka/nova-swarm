@@ -16,7 +16,7 @@ func clear() -> void:
 
 
 func spawn() -> void:
-	boss = {"x": width / 2.0, "y": hud_y + 210.0, "hp": 520, "max_hp": 520, "t": 0.0, "phase": 0, "shoot": 0.5, "beam": 0.0, "tell": 0.0}
+	boss = {"x": width / 2.0, "y": hud_y + 210.0, "hp": 380, "max_hp": 380, "t": 0.0, "phase": 0, "shoot": 0.5, "beam": 0.0, "tell": 0.0}
 
 
 func update(dt: float, projectiles: RefCounted) -> bool:

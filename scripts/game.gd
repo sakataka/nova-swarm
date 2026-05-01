@@ -33,8 +33,17 @@ var bomb_waves: Array[Dictionary] = []
 var items: Array[Dictionary] = []
 var sprite_texture: Texture2D
 var background_texture: Texture2D
+var ui_texture: Texture2D
 var font: Font
 var sprites: Dictionary = Config.sprites()
+var ui_regions := {
+	"logo": Rect2(105, 44, 1045, 320),
+	"life": Rect2(165, 391, 248, 248),
+	"bomb": Rect2(504, 391, 248, 248),
+	"shield": Rect2(844, 391, 248, 248),
+	"banner": Rect2(109, 685, 1038, 148),
+	"ending": Rect2(97, 849, 1060, 334),
+}
 
 
 func _ready() -> void:
@@ -45,6 +54,7 @@ func _ready() -> void:
 	font = ThemeDB.fallback_font
 	sprite_texture = _load_sprite_texture()
 	background_texture = load("res://public/assets/backgrounds.png")
+	ui_texture = _load_png_texture("res://public/assets/ui_atlas.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
 	_parse_web_query()
@@ -265,7 +275,7 @@ func _check_collisions() -> void:
 				else:
 					audio_manager.play_sfx("hit")
 
-		if boss_controller.is_alive() and bullet.y < boss_controller.boss.y + 185.0 and bullet.y > boss_controller.boss.y - 165.0 and absf(bullet.x - boss_controller.boss.x) < 245.0:
+		if boss_controller.is_alive() and _boss_hit_test(Vector2(bullet.x, bullet.y), bullet.r):
 			bullet.y = -999.0
 			boss_controller.boss.hp -= bullet.power
 			score += 8 + min(player.combo, 20)
@@ -434,17 +444,23 @@ func _draw_item(item: Dictionary) -> void:
 	var center := Vector2(item.x, item.y + bob)
 	var color := Color("#ff6f88")
 	var label := "+"
+	var region_key := "life"
 	if item.kind == "bomb":
 		color = Color("#ff7af0")
 		label = "B"
+		region_key = "bomb"
 	elif item.kind == "shield":
 		color = Color("#72eaff")
 		label = "S"
-	draw_circle(center, 20.0, Color(color, 0.18))
-	draw_circle(center, 12.0, Color(color, 0.88))
-	draw_arc(center, 18.0, -PI * 0.5, PI * 1.5, 28, Color(1, 1, 1, 0.72), 2.0)
-	var label_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
-	draw_string(font, center + Vector2(-label_size.x / 2.0, 5.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#06121c"))
+		region_key = "shield"
+	if ui_texture:
+		draw_texture_rect_region(ui_texture, Rect2(center.x - 24.0, center.y - 24.0, 48.0, 48.0), ui_regions[region_key])
+	else:
+		draw_circle(center, 20.0, Color(color, 0.18))
+		draw_circle(center, 12.0, Color(color, 0.88))
+		draw_arc(center, 18.0, -PI * 0.5, PI * 1.5, 28, Color(1, 1, 1, 0.72), 2.0)
+		var label_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
+		draw_string(font, center + Vector2(-label_size.x / 2.0, 5.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#06121c"))
 
 
 func _draw_sprite(key: String, cx: float, cy: float, dw: float, dh: float, tint := Color.WHITE) -> void:
@@ -464,19 +480,32 @@ func _draw_overlay() -> void:
 	elif state == GameState.GAME_OVER:
 		title = "GAME OVER"
 	var sub := "PRESS P TO RETURN" if state == GameState.PAUSED else "PRESS ENTER TO START"
-	_draw_arcade_title(title, Config.HUD + 214.0, 58, Color("#dffcff"))
-	hud.draw_centered(self, font, sub, Config.HUD + 292, 22, Color("#ff7af0"))
-	hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 340, 17, Color(0.89, 0.98, 1.0, 0.82))
+	if state == GameState.TITLE and ui_texture:
+		draw_texture_rect_region(ui_texture, Rect2(130, Config.HUD + 92, 700, 214), ui_regions.logo)
+		hud.draw_centered(self, font, sub, Config.HUD + 330, 22, Color("#ff7af0"))
+		hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 378, 17, Color(0.89, 0.98, 1.0, 0.82))
+	elif state == GameState.VICTORY and ui_texture:
+		draw_texture_rect_region(ui_texture, Rect2(146, Config.HUD + 72, 668, 210), ui_regions.ending)
+		_draw_arcade_title(title, Config.HUD + 330.0, 44, Color("#dffcff"))
+		hud.draw_centered(self, font, "FINAL SCORE " + str(score).pad_zeros(7), Config.HUD + 382, 22, Color("#ffef8b"))
+		hud.draw_centered(self, font, sub, Config.HUD + 430, 20, Color("#ff7af0"))
+	else:
+		_draw_arcade_title(title, Config.HUD + 214.0, 58, Color("#dffcff"))
+		hud.draw_centered(self, font, sub, Config.HUD + 292, 22, Color("#ff7af0"))
+		hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 340, 17, Color(0.89, 0.98, 1.0, 0.82))
 
 
 func _draw_stage_banner(text: String, y: float, alpha: float) -> void:
 	var size := 30
 	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 	var x := (Config.W - text_size.x) / 2.0
-	var panel := Rect2(x - 34.0, y - 28.0, text_size.x + 68.0, 46.0)
-	draw_rect(panel, Color(0.02, 0.06, 0.12, 0.42 * alpha))
-	draw_line(panel.position + Vector2(0, 2), panel.position + Vector2(panel.size.x, 2), Color(0.33, 0.91, 1.0, 0.65 * alpha), 2.0)
-	draw_line(panel.position + Vector2(0, panel.size.y - 2), panel.position + Vector2(panel.size.x, panel.size.y - 2), Color(1.0, 0.48, 0.94, 0.65 * alpha), 2.0)
+	if ui_texture:
+		draw_texture_rect_region(ui_texture, Rect2(250, y - 45.0, 460, 66), ui_regions.banner, Color(1, 1, 1, alpha))
+	else:
+		var panel := Rect2(x - 34.0, y - 28.0, text_size.x + 68.0, 46.0)
+		draw_rect(panel, Color(0.02, 0.06, 0.12, 0.42 * alpha))
+		draw_line(panel.position + Vector2(0, 2), panel.position + Vector2(panel.size.x, 2), Color(0.33, 0.91, 1.0, 0.65 * alpha), 2.0)
+		draw_line(panel.position + Vector2(0, panel.size.y - 2), panel.position + Vector2(panel.size.x, panel.size.y - 2), Color(1.0, 0.48, 0.94, 0.65 * alpha), 2.0)
 	draw_string(font, Vector2(x + 2.0, y + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.62 * alpha))
 	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.88, 1.0, 1.0, alpha))
 
@@ -492,6 +521,20 @@ func _draw_arcade_title(text: String, y: float, size: int, color: Color) -> void
 
 func _distance(a: Dictionary, b: Dictionary) -> float:
 	return Vector2(a.x, a.y).distance_to(Vector2(b.x, b.y))
+
+
+func _boss_hit_test(point: Vector2, radius: float) -> bool:
+	var b: Dictionary = boss_controller.boss
+	var zones := [
+		{"offset": Vector2(0, -4), "r": 98.0},
+		{"offset": Vector2(-96, 18), "r": 54.0},
+		{"offset": Vector2(96, 18), "r": 54.0},
+		{"offset": Vector2(0, 104), "r": 42.0},
+	]
+	for zone in zones:
+		if point.distance_to(Vector2(b.x, b.y) + zone.offset) <= zone.r + radius:
+			return true
+	return false
 
 
 func _load_sprite_texture() -> Texture2D:
@@ -511,6 +554,20 @@ func _load_sprite_texture() -> Texture2D:
 			if color.r < 0.12 and color.g < 0.12 and color.b < 0.13:
 				color.a = 0.0
 				image.set_pixel(x, y, color)
+	return ImageTexture.create_from_image(image)
+
+
+func _load_png_texture(path: String) -> Texture2D:
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.is_empty():
+		push_warning("Failed to read " + path)
+		return null
+	var image := Image.new()
+	var err := image.load_png_from_buffer(bytes)
+	if err != OK:
+		push_warning("Failed to decode " + path)
+		return null
+	image.convert(Image.FORMAT_RGBA8)
 	return ImageTexture.create_from_image(image)
 
 

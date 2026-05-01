@@ -24,6 +24,14 @@ func _initialize() -> void:
 
 	scene.load_stage(4)
 	_assert(scene.boss_controller.is_alive(), "boss stage spawns boss")
+	var boss_hp: int = scene.boss_controller.boss.hp
+	scene.projectiles.bullets.append({"x": scene.boss_controller.boss.x + 220.0, "y": scene.boss_controller.boss.y, "vx": 0.0, "vy": 0.0, "enemy": false, "r": 4.0, "power": 1, "color": Color.WHITE})
+	scene._check_collisions()
+	_assert(scene.boss_controller.boss.hp == boss_hp, "boss edge miss does not consume bullet")
+	scene.projectiles.bullets.clear()
+	scene.projectiles.bullets.append({"x": scene.boss_controller.boss.x, "y": scene.boss_controller.boss.y, "vx": 0.0, "vy": 0.0, "enemy": false, "r": 4.0, "power": 1, "color": Color.WHITE})
+	scene._check_collisions()
+	_assert(scene.boss_controller.boss.hp == boss_hp - 1, "boss core hit applies damage")
 	scene.boss_controller.boss.hp = 0
 	scene._check_stage_end()
 	_assert(scene.state == scene.GameState.VICTORY, "boss defeat wins")
