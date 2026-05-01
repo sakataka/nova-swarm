@@ -5,6 +5,7 @@ var x := 480.0
 var y := 662.0
 var lives := 3
 var bombs := 3
+var shield := 0
 var invuln := 0.0
 var shot_cd := 0.0
 var bomb_cd := 0.0
@@ -27,6 +28,7 @@ func reset_run(start_x: float) -> void:
 	x = start_x
 	lives = 3
 	bombs = 3
+	shield = 0
 	invuln = 0.0
 	shot_cd = 0.0
 	bomb_cd = 0.0
@@ -79,9 +81,25 @@ func register_kill() -> float:
 
 
 func hurt() -> bool:
+	if shield > 0:
+		shield -= 1
+		invuln = 1.0
+		combo = 0
+		combo_timer = 0.0
+		no_miss_stage = false
+		return false
 	lives -= 1
 	invuln = 1.8
 	combo = 0
 	combo_timer = 0.0
 	no_miss_stage = false
 	return lives <= 0
+
+
+func apply_item(item_kind: String) -> void:
+	if item_kind == "life":
+		lives = mini(5, lives + 1)
+	elif item_kind == "bomb":
+		bombs = mini(5, bombs + 1)
+	elif item_kind == "shield":
+		shield = mini(2, shield + 1)

@@ -4,7 +4,7 @@ class_name HudRenderer
 const Config := preload("res://scripts/game_config.gd")
 
 
-func draw_hud(canvas: CanvasItem, font: Font, score: int, stage: int, lives: int, bombs: int, combo: int, boss: Dictionary) -> void:
+func draw_hud(canvas: CanvasItem, font: Font, score: int, stage: int, lives: int, bombs: int, shield: int, combo: int, boss: Dictionary) -> void:
 	canvas.draw_rect(Rect2(0, 0, Config.W, Config.HUD), Color(0.012, 0.031, 0.063, 0.94))
 	canvas.draw_line(Vector2(0, Config.HUD - 1.0), Vector2(Config.W, Config.HUD - 1.0), Color(0.33, 0.91, 1.0, 0.5), 2.0)
 	_draw_label(canvas, font, "SCORE", 22, 14)
@@ -13,11 +13,13 @@ func draw_hud(canvas: CanvasItem, font: Font, score: int, stage: int, lives: int
 	_draw_digits(canvas, str(stage + 1), 430, 12, 5, Color("#fff06a"))
 	_draw_label(canvas, font, "LIFE", 512, 14)
 	_draw_digits(canvas, str(lives), 594, 12, 5, Color("#81ff88"))
-	_draw_label(canvas, font, "BOMB", 662, 14)
-	_draw_digits(canvas, str(bombs), 750, 12, 5, Color("#ff7af0"))
+	_draw_label(canvas, font, "BOMB", 642, 14)
+	_draw_digits(canvas, str(bombs), 730, 12, 5, Color("#ff7af0"))
+	_draw_label(canvas, font, "SHLD", 790, 14)
+	_draw_digits(canvas, str(shield), 874, 12, 5, Color("#72eaff"))
 	if combo >= 2:
-		_draw_label(canvas, font, "CHAIN", 830, 14)
-		_draw_digits(canvas, str(combo), 902, 12, 5, Color("#ffef8b"))
+		_draw_label(canvas, font, "CHAIN", 790, 43)
+		_draw_digits(canvas, str(combo), 874, 41, 4, Color("#ffef8b"))
 	if not boss.is_empty():
 		var bar_width := 330.0
 		canvas.draw_rect(Rect2(315, 56, bar_width, 8), Color(1, 1, 1, 0.14))

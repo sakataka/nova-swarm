@@ -30,6 +30,7 @@ var audio_manager
 
 var explosions: Array[Dictionary] = []
 var bomb_waves: Array[Dictionary] = []
+var items: Array[Dictionary] = []
 var sprite_texture: Texture2D
 var background_texture: Texture2D
 var font: Font
@@ -127,16 +128,16 @@ func load_stage(index: int) -> void:
 	projectiles.clear()
 	explosions.clear()
 	bomb_waves.clear()
+	items.clear()
 	swarm.clear()
 	boss_controller.clear()
 	player.start_stage(Config.W / 2.0)
 	_recalculate_difficulty()
-	_add_flash(0.34, 3.0)
+	flash = maxf(flash, 0.18)
 
 	var st: Dictionary = Config.STAGES[index]
 	if st.boss:
 		boss_controller.spawn()
-		_add_shake(8.0)
 		audio_manager.play_sfx("boss")
 		return
 
@@ -161,10 +162,10 @@ func _update_game(dt: float) -> void:
 	var st: Dictionary = Config.STAGES[stage]
 	swarm.update(dt, st, stage, stage_timer, difficulty, player.x, projectiles, Config.ENEMY_STATS)
 	if boss_controller.update(dt, projectiles):
-		_add_shake(5.0)
 		audio_manager.play_sfx("boss")
 	projectiles.update(dt)
 	_update_explosions(dt)
+	_update_items(dt)
 	_check_collisions()
 	_check_stage_end()
 
@@ -182,9 +183,9 @@ func _fire_player() -> void:
 func _use_bomb() -> void:
 	player.consume_bomb()
 	audio_manager.play_sfx("bomb")
-	_add_shake(12.0)
+	_add_shake(3.0)
 	_add_flash(0.42, 0.18)
-	hitstop = 0.035
+	hitstop = 0.025
 	var blast := {"x": player.x, "y": player.y - 54.0, "t": 0.0, "width": 172.0}
 	bomb_waves.append(blast)
 
@@ -199,6 +200,7 @@ func _use_bomb() -> void:
 			enemy.hp = 0
 			explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer"]})
 			score += int(enemy.score * 0.6)
+			_maybe_drop_item(enemy, true)
 	swarm.remove_dead()
 
 	if boss_controller.is_alive() and absf(boss_controller.boss.x - blast.x) < 205.0:
@@ -219,6 +221,33 @@ func _update_explosions(dt: float) -> void:
 	bomb_waves = bomb_waves.filter(func(wave: Dictionary) -> bool: return wave.t < 0.62)
 
 
+func _update_items(dt: float) -> void:
+	for item in items:
+		item.t += dt
+		item.y += item.vy * dt
+		item.x += sin(item.t * 4.0) * 18.0 * dt
+	items = items.filter(func(item: Dictionary) -> bool: return item.y < Config.H + 36.0)
+
+
+func _maybe_drop_item(enemy: Dictionary, from_bomb: bool) -> void:
+	var base_chance := 0.08
+	if enemy.kind in ["armor", "saucer"]:
+		base_chance += 0.06
+	if player.lives <= 1:
+		base_chance += 0.07
+	if from_bomb:
+		base_chance *= 0.55
+	if randf() > base_chance:
+		return
+	var roll := randf()
+	var item_kind := "bomb"
+	if player.lives <= 2 and roll < 0.42:
+		item_kind = "life"
+	elif roll < 0.72:
+		item_kind = "shield"
+	items.append({"kind": item_kind, "x": enemy.x, "y": enemy.y, "vy": 88.0, "t": 0.0})
+
+
 func _check_collisions() -> void:
 	for bullet in projectiles.bullets:
 		if bullet.enemy:
@@ -231,11 +260,9 @@ func _check_collisions() -> void:
 					var multiplier: float = player.register_kill()
 					score += int(enemy.score * multiplier)
 					explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer"]})
-					_add_shake(3.8 if enemy.kind in ["armor", "saucer"] else 2.2)
-					hitstop = 0.018
+					_maybe_drop_item(enemy, false)
 					audio_manager.play_sfx("boom")
 				else:
-					_add_shake(1.0)
 					audio_manager.play_sfx("hit")
 
 		if boss_controller.is_alive() and bullet.y < boss_controller.boss.y + 185.0 and bullet.y > boss_controller.boss.y - 165.0 and absf(bullet.x - boss_controller.boss.x) < 245.0:
@@ -243,7 +270,6 @@ func _check_collisions() -> void:
 			boss_controller.boss.hp -= bullet.power
 			score += 8 + min(player.combo, 20)
 			explosions.append({"x": bullet.x, "y": bullet.y + 20.0, "t": 0.0, "big": false})
-			_add_shake(0.8)
 			audio_manager.play_sfx("hit")
 
 	swarm.remove_dead()
@@ -256,14 +282,23 @@ func _check_collisions() -> void:
 		if hit_bullet or hit_enemy:
 			_hurt()
 
+	for item in items:
+		if Vector2(item.x, item.y).distance_to(Vector2(player.x, player.y)) < 42.0:
+			player.apply_item(item.kind)
+			item.y = Config.H + 999.0
+			score += 150
+			flash = maxf(flash, 0.18)
+			audio_manager.play_sfx("clear")
+	items = items.filter(func(item: Dictionary) -> bool: return item.y < Config.H + 100.0)
+
 
 func _hurt() -> void:
 	var dead: bool = player.hurt()
 	projectiles.clear_enemy_bullets()
 	explosions.append({"x": player.x, "y": player.y, "t": 0.0, "big": true})
-	_add_shake(16.0)
+	_add_shake(6.0)
 	_add_flash(0.55, 0.05)
-	hitstop = 0.08
+	hitstop = 0.055
 	audio_manager.play_sfx("hurt")
 	if dead:
 		state = GameState.GAME_OVER
@@ -275,7 +310,7 @@ func _check_stage_end() -> void:
 		explosions.append({"x": boss_controller.boss.x, "y": boss_controller.boss.y, "t": 0.0, "big": true})
 		boss_controller.clear()
 		state = GameState.VICTORY
-		_add_shake(18.0)
+		_add_shake(7.0)
 		_add_flash(0.72, 0.04)
 		audio_manager.play_sfx("clear")
 		return
@@ -299,18 +334,18 @@ func _add_flash(amount: float, hitstop_time: float) -> void:
 func _draw() -> void:
 	var shake := Vector2.ZERO
 	if screen_shake > 0.0:
-		shake = Vector2(randf_range(-screen_shake, screen_shake), randf_range(-screen_shake, screen_shake))
+		shake = Vector2(randf_range(-screen_shake, screen_shake), randf_range(-screen_shake, screen_shake)).round()
 	draw_set_transform(shake, 0.0, Vector2.ONE)
 	draw_rect(Rect2(0, 0, Config.W, Config.H), Color("#04050a"))
 	_draw_background()
-	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.combo, boss_controller.boss)
+	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.shield, player.combo, boss_controller.boss)
 	_draw_playfield()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if flash > 0.0:
 		draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.34))
 	if stage_banner > 0.0 and state == GameState.PLAYING:
 		var alpha := minf(1.0, stage_banner)
-		hud.draw_centered(self, font, Config.STAGES[stage].name, Config.HUD + 122.0, 32, Color(0.92, 1.0, 1.0, alpha))
+		_draw_stage_banner(Config.STAGES[stage].name, Config.HUD + 118.0, alpha)
 	if state != GameState.PLAYING:
 		_draw_overlay()
 
@@ -340,6 +375,8 @@ func _draw_playfield() -> void:
 		_draw_bullet(bullet)
 	for wave in bomb_waves:
 		_draw_bomb_wave(wave)
+	for item in items:
+		_draw_item(item)
 	_draw_player()
 	for explosion in explosions:
 		_draw_explosion(explosion)
@@ -348,6 +385,8 @@ func _draw_playfield() -> void:
 func _draw_player() -> void:
 	var tint := Color(1, 1, 1, 0.52) if player.invuln > 0.0 and int(stage_timer * 16.0) % 2 == 0 else Color.WHITE
 	_draw_sprite("player", player.x, player.y, 150, 150, tint)
+	if player.shield > 0:
+		draw_arc(Vector2(player.x, player.y), 55.0, 0.0, TAU, 48, Color(0.52, 0.94, 1.0, 0.56), 3.0)
 
 
 func _draw_enemy(enemy: Dictionary) -> void:
@@ -390,6 +429,24 @@ func _draw_bomb_wave(wave: Dictionary) -> void:
 	draw_line(Vector2(wave.x, player.y), Vector2(wave.x + sin(wave.t * 48.0) * 18.0, top), Color(1, 1, 1, 0.8 * alpha), 4.0)
 
 
+func _draw_item(item: Dictionary) -> void:
+	var bob := sin(item.t * 8.0) * 3.0
+	var center := Vector2(item.x, item.y + bob)
+	var color := Color("#ff6f88")
+	var label := "+"
+	if item.kind == "bomb":
+		color = Color("#ff7af0")
+		label = "B"
+	elif item.kind == "shield":
+		color = Color("#72eaff")
+		label = "S"
+	draw_circle(center, 20.0, Color(color, 0.18))
+	draw_circle(center, 12.0, Color(color, 0.88))
+	draw_arc(center, 18.0, -PI * 0.5, PI * 1.5, 28, Color(1, 1, 1, 0.72), 2.0)
+	var label_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
+	draw_string(font, center + Vector2(-label_size.x / 2.0, 5.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#06121c"))
+
+
 func _draw_sprite(key: String, cx: float, cy: float, dw: float, dh: float, tint := Color.WHITE) -> void:
 	if sprite_texture and sprites.has(key):
 		draw_texture_rect_region(sprite_texture, Rect2(cx - dw / 2.0, cy - dh / 2.0, dw, dh), sprites[key], tint)
@@ -398,7 +455,7 @@ func _draw_sprite(key: String, cx: float, cy: float, dw: float, dh: float, tint 
 
 
 func _draw_overlay() -> void:
-	draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(0, 0, 0, 0.62))
+	draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(0, 0, 0, 0.66))
 	var title := "NOVA SWARM"
 	if state == GameState.PAUSED:
 		title = "PAUSED"
@@ -407,9 +464,30 @@ func _draw_overlay() -> void:
 	elif state == GameState.GAME_OVER:
 		title = "GAME OVER"
 	var sub := "PRESS P TO RETURN" if state == GameState.PAUSED else "PRESS ENTER TO START"
-	hud.draw_centered(self, font, title, Config.HUD + 220, 58, Color("#dffcff"))
+	_draw_arcade_title(title, Config.HUD + 214.0, 58, Color("#dffcff"))
 	hud.draw_centered(self, font, sub, Config.HUD + 292, 22, Color("#ff7af0"))
-	hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / BOMB / BOSS PHASES", Config.HUD + 340, 17, Color(0.89, 0.98, 1.0, 0.82))
+	hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 340, 17, Color(0.89, 0.98, 1.0, 0.82))
+
+
+func _draw_stage_banner(text: String, y: float, alpha: float) -> void:
+	var size := 30
+	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+	var x := (Config.W - text_size.x) / 2.0
+	var panel := Rect2(x - 34.0, y - 28.0, text_size.x + 68.0, 46.0)
+	draw_rect(panel, Color(0.02, 0.06, 0.12, 0.42 * alpha))
+	draw_line(panel.position + Vector2(0, 2), panel.position + Vector2(panel.size.x, 2), Color(0.33, 0.91, 1.0, 0.65 * alpha), 2.0)
+	draw_line(panel.position + Vector2(0, panel.size.y - 2), panel.position + Vector2(panel.size.x, panel.size.y - 2), Color(1.0, 0.48, 0.94, 0.65 * alpha), 2.0)
+	draw_string(font, Vector2(x + 2.0, y + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.62 * alpha))
+	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.88, 1.0, 1.0, alpha))
+
+
+func _draw_arcade_title(text: String, y: float, size: int, color: Color) -> void:
+	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+	var x := (Config.W - text_size.x) / 2.0
+	draw_string(font, Vector2(x + 3.0, y + 3.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.0, 0.0, 0.0, 0.72))
+	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+	draw_line(Vector2(x - 34.0, y + 10.0), Vector2(x - 8.0, y + 10.0), Color("#ff7af0"), 3.0)
+	draw_line(Vector2(x + text_size.x + 8.0, y + 10.0), Vector2(x + text_size.x + 34.0, y + 10.0), Color("#ff7af0"), 3.0)
 
 
 func _distance(a: Dictionary, b: Dictionary) -> float:

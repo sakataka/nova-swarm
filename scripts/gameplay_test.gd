@@ -10,6 +10,7 @@ func _initialize() -> void:
 	_assert(scene.state == scene.GameState.PLAYING, "reset starts play")
 	_assert(scene.stage == 0, "reset loads stage 1")
 	_assert(scene.swarm.enemies.size() == 24, "stage 1 enemy count")
+	_assert(scene.hitstop == 0.0, "stage banner does not stop play")
 
 	var bombs_before: int = scene.player.bombs
 	scene._use_bomb()
@@ -33,6 +34,16 @@ func _initialize() -> void:
 	scene.projectiles.bullets.append({"x": scene.player.x, "y": scene.player.y, "vx": 0.0, "vy": 0.0, "enemy": true, "r": 8.0, "power": 1, "color": Color.WHITE})
 	scene._check_collisions()
 	_assert(scene.state == scene.GameState.GAME_OVER, "fatal hit ends run")
+
+	scene.reset()
+	scene.player.lives = 2
+	scene.items.append({"kind": "life", "x": scene.player.x, "y": scene.player.y, "vy": 0.0, "t": 0.0})
+	scene._check_collisions()
+	_assert(scene.player.lives == 3, "life item heals")
+
+	scene.items.append({"kind": "shield", "x": scene.player.x, "y": scene.player.y, "vy": 0.0, "t": 0.0})
+	scene._check_collisions()
+	_assert(scene.player.shield == 1, "shield item is collected")
 
 	root.remove_child(scene)
 	scene.free()
