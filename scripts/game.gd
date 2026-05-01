@@ -57,6 +57,7 @@ func _ready() -> void:
 	ui_texture = _load_imported_or_png_texture("res://public/assets/ui_atlas.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
+	audio_manager.play_music("title", 0.25)
 	_parse_web_query()
 	queue_redraw()
 
@@ -112,9 +113,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("pause_game") and state == GameState.PLAYING:
 		state = GameState.PAUSED
+		audio_manager.set_music_ducked(true)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("pause_game") and state == GameState.PAUSED:
 		state = GameState.PLAYING
+		audio_manager.set_music_ducked(false)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("mute_audio"):
 		audio_manager.toggle_mute()
@@ -127,6 +130,7 @@ func reset() -> void:
 	difficulty = 1.0
 	player.reset_run(Config.W / 2.0)
 	state = GameState.PLAYING
+	audio_manager.set_music_ducked(false)
 	load_stage(0)
 	audio_manager.play_sfx("clear")
 
@@ -148,9 +152,11 @@ func load_stage(index: int) -> void:
 	var st: Dictionary = Config.STAGES[index]
 	if st.boss:
 		boss_controller.spawn()
+		audio_manager.play_music("boss_core")
 		audio_manager.play_sfx("boss")
 		return
 
+	audio_manager.play_music("stage_pressure" if index >= 2 else "stage_drive")
 	swarm.load_stage(st, Config.ENEMY_STATS, difficulty)
 
 
@@ -312,6 +318,8 @@ func _hurt() -> void:
 	audio_manager.play_sfx("hurt")
 	if dead:
 		state = GameState.GAME_OVER
+		audio_manager.set_music_ducked(false)
+		audio_manager.play_music("game_over")
 
 
 func _check_stage_end() -> void:
@@ -322,6 +330,8 @@ func _check_stage_end() -> void:
 		state = GameState.VICTORY
 		_add_shake(7.0)
 		_add_flash(0.72, 0.04)
+		audio_manager.set_music_ducked(false)
+		audio_manager.play_music("victory_clear")
 		audio_manager.play_sfx("clear")
 		return
 

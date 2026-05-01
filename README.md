@@ -53,13 +53,14 @@ export_presets.cfg
 - `boss_controller.gd`: ボスのフェーズ、攻撃、ビーム予兆
 - `projectile_manager.gd`: 自弾・敵弾の生成と更新
 - `hud.gd`: HUD描画
-- `audio_manager.gd`: 生成音、BGM風シーケンス、ミュート、headless時の音声無効化
+- `audio_manager.gd`: 効果音、Resonate対応BGM切り替え、クロスフェード、ミュート、headless時の音声無効化
 
 ## アセット
 
 - `public/assets/spritesheet.png`: 自機、敵、弾、爆発、ボスなどの4x4固定グリッドスプライト
 - `public/assets/backgrounds.png`: 5ステージ分の宇宙背景アトラス
 - `public/assets/ui_atlas.png`: タイトルロゴ、アイテムアイコン、ステージバナー、エンディング絵のUIアトラス
+- `public/assets/audio/music/*.wav`: タイトル、通常戦、後半戦、ボス、勝利、ゲームオーバー用のネオンSTG系BGMループ
 
 ## ゲーム品質改善
 

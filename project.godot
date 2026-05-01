@@ -15,6 +15,20 @@ run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://public/assets/spritesheet.png"
 
+[audio]
+
+manager/sound/bus="Sound"
+manager/sound/pool_1D_size=16
+manager/sound/pool_2D_size=16
+manager/sound/pool_3D_size=16
+manager/sound/max_polyphony=32
+manager/music/bus="Music"
+
+[autoload]
+
+SoundManager="*uid://sgxo2a017ehn"
+MusicManager="*uid://b3612i7nyqsva"
+
 [display]
 
 window/size/viewport_width=960
@@ -23,6 +37,10 @@ window/size/window_width_override=1920
 window/size/window_height_override=1440
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/resonate/plugin.cfg")
 
 [input]
 
