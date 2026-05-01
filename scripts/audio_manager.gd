@@ -159,28 +159,24 @@ func _setup_music() -> void:
 func _create_resonate_bank() -> void:
 	if _music_bank:
 		return
-	var music_bank_script: Script = load("res://addons/resonate/music_manager/music_bank.gd")
-	var music_track_script: Script = load("res://addons/resonate/music_manager/music_track_resource.gd")
-	var music_stem_script: Script = load("res://addons/resonate/music_manager/music_stem_resource.gd")
-	if not music_bank_script or not music_track_script or not music_stem_script:
-		return
-
-	_music_bank = music_bank_script.new()
+	_music_bank = MusicBank.new()
 	_music_bank.name = "NovaMusicBank"
 	_music_bank.label = MUSIC_BANK_LABEL
-	_music_bank.tracks = []
+	var tracks: Array[MusicTrackResource] = []
 	for music_key in music_streams.keys():
-		var stem: Resource = music_stem_script.new()
+		var stem := MusicStemResource.new()
 		stem.name = "main"
 		stem.enabled = true
 		stem.volume = 0.0
 		stem.stream = music_streams[music_key]
 
-		var track: Resource = music_track_script.new()
+		var stems: Array[MusicStemResource] = [stem]
+		var track := MusicTrackResource.new()
 		track.name = music_key
 		track.bus = ""
-		track.stems = [stem]
-		_music_bank.tracks.append(track)
+		track.stems = stems
+		tracks.append(track)
+	_music_bank.tracks = tracks
 	add_child(_music_bank)
 	if _resonate_manager.has_method("add_bank"):
 		_resonate_manager.call("add_bank", _music_bank)
