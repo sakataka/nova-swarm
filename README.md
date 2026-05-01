@@ -29,18 +29,42 @@ Godotエディタでこのフォルダを開き、実行します。
 project.godot
 scenes/main.tscn
 scripts/game.gd
+scripts/game_config.gd
+scripts/player.gd
+scripts/enemy_swarm.gd
+scripts/boss_controller.gd
+scripts/projectile_manager.gd
+scripts/hud.gd
+scripts/audio_manager.gd
 scripts/smoke_test.gd
+scripts/gameplay_test.gd
 public/assets/spritesheet.png
 public/assets/backgrounds.png
 export_presets.cfg
 ```
 
-`scripts/game.gd` がゲーム本体です。スプライトシートは実行時に黒背景を透明化して使います。
+`scripts/game.gd` は `GameController` として各サブシステムを束ねます。ステージ・敵・HUD用数字などの調整値は `scripts/game_config.gd` に集約しています。スプライトシートは実行時に黒背景を透明化して使います。
+
+主な分割:
+
+- `player.gd`: 自機のライフ、ボム、無敵、連続撃破チェイン
+- `enemy_swarm.gd`: 通常ステージの編隊、急降下、射撃
+- `boss_controller.gd`: ボスのフェーズ、攻撃、ビーム予兆
+- `projectile_manager.gd`: 自弾・敵弾の生成と更新
+- `hud.gd`: HUD描画
+- `audio_manager.gd`: 生成音、BGM風シーケンス、ミュート、headless時の音声無効化
 
 ## アセット
 
 - `public/assets/spritesheet.png`: 自機、敵、弾、爆発、ボスなどの4x4固定グリッドスプライト
 - `public/assets/backgrounds.png`: 5ステージ分の宇宙背景アトラス
+
+## ゲーム品質改善
+
+- Input Map 経由の操作に変更し、キーボードとゲームパッド入力を扱いやすくしています。
+- スコアチェイン、ノーミスステージボーナス、成績に応じた軽い難易度補正を追加しています。
+- 爆発、被弾、ボム、ステージ開始、ボス攻撃に画面揺れ、フラッシュ、ヒットストップ、予兆を追加しています。
+- `armor` は2HPになり、敵ごとの役割差が出るようにしています。
 
 ## 検証
 
@@ -48,6 +72,12 @@ export_presets.cfg
 
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/smoke_test.gd
+```
+
+ゲームプレイテスト:
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/gameplay_test.gd
 ```
 
 Godot MCPで確認する場合:

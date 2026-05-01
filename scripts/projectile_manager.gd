@@ -1,0 +1,59 @@
+extends RefCounted
+class_name ProjectileManager
+
+var bullets: Array[Dictionary] = []
+var hud_y := 76.0
+var width := 960.0
+var height := 720.0
+
+
+func setup(play_width: float, play_height: float, hud_height: float) -> void:
+	width = play_width
+	height = play_height
+	hud_y = hud_height
+
+
+func clear() -> void:
+	bullets.clear()
+
+
+func fire_player(x: float, y: float) -> void:
+	bullets.append({"x": x - 12.0, "y": y - 44.0, "vx": 0.0, "vy": -660.0, "enemy": false, "r": 4.0, "power": 1, "color": Color("#49dfff")})
+	bullets.append({"x": x + 12.0, "y": y - 44.0, "vx": 0.0, "vy": -660.0, "enemy": false, "r": 4.0, "power": 1, "color": Color("#49dfff")})
+
+
+func fire_enemy(enemy: Dictionary, player_x: float, enemy_stats: Dictionary) -> void:
+	if enemy.kind == "saucer":
+		for side in [-1, 1]:
+			bullets.append({"x": enemy.x, "y": enemy.y + 22.0, "vx": side * 70.0, "vy": 215.0, "enemy": true, "r": 5.0, "power": 1, "color": Color("#ff63f7")})
+		return
+
+	var aim := clampf((player_x - enemy.x) * 0.22, -90.0, 90.0)
+	var stats: Dictionary = enemy_stats[enemy.kind]
+	bullets.append({"x": enemy.x, "y": enemy.y + 22.0, "vx": aim, "vy": 260.0 if enemy.kind == "armor" else 230.0, "enemy": true, "r": 6.0 if enemy.kind == "armor" else 5.0, "power": 1, "color": stats.color})
+
+
+func fire_boss(x: float, y: float, phase: int) -> void:
+	var spread := 3 if phase == 0 else 4 if phase == 1 else 5
+	for i in range(spread):
+		var dx := i - (spread - 1.0) / 2.0
+		bullets.append({"x": x + dx * 42.0, "y": y + 128.0, "vx": dx * 42.0, "vy": 220.0 + absf(dx) * 16.0, "enemy": true, "r": 6.0, "power": 1, "color": Color("#ff49df") if i % 2 else Color("#ff7a2b")})
+
+
+func fire_boss_beam(x: float, y: float) -> void:
+	bullets.append({"x": x, "y": y + 148.0, "vx": 0.0, "vy": 360.0, "enemy": true, "r": 14.0, "power": 1, "color": Color("#ff3c37")})
+
+
+func update(dt: float) -> void:
+	for bullet in bullets:
+		bullet.x += bullet.vx * dt
+		bullet.y += bullet.vy * dt
+	bullets = bullets.filter(func(bullet: Dictionary) -> bool: return bullet.y > hud_y - 40.0 and bullet.y < height + 50.0 and bullet.x > -50.0 and bullet.x < width + 50.0)
+
+
+func clear_enemy_bullets() -> void:
+	bullets = bullets.filter(func(bullet: Dictionary) -> bool: return not bullet.enemy)
+
+
+func cull_marked_player_bullets() -> void:
+	bullets = bullets.filter(func(bullet: Dictionary) -> bool: return bullet.y > -900.0)

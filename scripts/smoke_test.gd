@@ -9,4 +9,7 @@ func _initialize() -> void:
 	for i in range(30):
 		scene._process(1.0 / 60.0)
 		await process_frame
+	root.remove_child(scene)
+	scene.free()
+	await process_frame
 	quit()
