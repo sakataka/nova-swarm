@@ -43,11 +43,20 @@ func _initialize() -> void:
 	var item_x: float = scene.player.x + 120.0
 	ai_command = scene.ai_pilot.get_command(scene.player, [], {}, [], [{"kind": "shield", "x": item_x, "y": scene.player.y - 120.0, "vy": 0.0, "t": 0.0}])
 	_assert(ai_command.move_axis > 0.0, "ai moves toward collectible item")
+	scene.player.shield = 1
+	ai_command = scene.ai_pilot.get_command(scene.player, scene.swarm.enemies, scene.boss_controller.boss, [], [{"kind": "shield", "x": scene.player.x + 240.0, "y": scene.player.y - 120.0, "vy": 0.0, "t": 0.0}])
+	_assert(ai_command.shoot, "ai keeps shooting instead of waiting for non-urgent item")
 	scene.load_stage(4)
 	scene.boss_controller.boss.x = scene.player.x + 120.0
 	ai_command = scene.ai_pilot.get_command(scene.player, [], scene.boss_controller.boss, [], [])
 	_assert(ai_command.shoot, "ai shoots at boss")
 	_assert(ai_command.move_axis != 0.0, "ai lines up with boss")
+	scene.boss_controller.boss.phase = 1
+	scene.player.bombs = 3
+	scene.player.bomb_cd = 0.0
+	scene.boss_controller.boss.x = scene.player.x
+	ai_command = scene.ai_pilot.get_command(scene.player, [], scene.boss_controller.boss, [], [])
+	_assert(ai_command.bomb, "ai uses bombs during pressured boss phases")
 
 	var bombs_before: int = scene.player.bombs
 	scene._use_bomb()

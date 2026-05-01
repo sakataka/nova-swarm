@@ -3,6 +3,7 @@ extends SceneTree
 const DEFAULT_SECONDS := 75.0
 const DEFAULT_SEED := 20260501
 const DEFAULT_MIN_STAGE := 1
+const DEFAULT_START_STAGE := 1
 
 
 func _initialize() -> void:
@@ -15,6 +16,8 @@ func _initialize() -> void:
 	seed(options.seed)
 	scene.selected_control_mode = scene.ControlMode.AI
 	scene.reset()
+	if options.start_stage > 0:
+		scene.load_stage(options.start_stage)
 	var frames := int(options.seconds * 60.0)
 	var last_stage: int = scene.stage
 	var damage_taken := 0
@@ -44,6 +47,7 @@ func _initialize() -> void:
 		"damage": damage_taken,
 		"seed": options.seed,
 		"seconds": options.seconds,
+		"start_stage": options.start_stage + 1,
 	}
 	print("AI_SIM_RESULT ", JSON.stringify(result))
 	var passed: bool = scene.state != scene.GameState.GAME_OVER and scene.stage >= options.min_stage
@@ -55,7 +59,7 @@ func _initialize() -> void:
 
 
 func _read_options() -> Dictionary:
-	var options := {"seconds": DEFAULT_SECONDS, "seed": DEFAULT_SEED, "min_stage": DEFAULT_MIN_STAGE}
+	var options := {"seconds": DEFAULT_SECONDS, "seed": DEFAULT_SEED, "min_stage": DEFAULT_MIN_STAGE, "start_stage": DEFAULT_START_STAGE - 1}
 	for arg in OS.get_cmdline_args():
 		if arg.begins_with("--seconds="):
 			options.seconds = maxf(1.0, float(arg.trim_prefix("--seconds=")))
@@ -63,6 +67,8 @@ func _read_options() -> Dictionary:
 			options.seed = int(arg.trim_prefix("--seed="))
 		elif arg.begins_with("--min-stage="):
 			options.min_stage = maxi(0, int(arg.trim_prefix("--min-stage=")) - 1)
+		elif arg.begins_with("--start-stage="):
+			options.start_stage = clampi(int(arg.trim_prefix("--start-stage=")) - 1, 0, 4)
 	return options
 
 

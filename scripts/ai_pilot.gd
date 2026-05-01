@@ -16,23 +16,23 @@ func get_command(player: RefCounted, enemies: Array, boss: Dictionary, bullets: 
 
 	var immediate_danger := _danger_at_x(player.x, player, bullets, enemies, boss)
 	var intent_x := _choose_intent_x(player, enemies, boss, items, immediate_danger)
-	var lane := _choose_lane(player, bullets, enemies, boss, intent_x)
+	var lane := _choose_lane(player, bullets, enemies, boss, items, intent_x)
 	var target_x: float = lane["x"]
 	var danger: float = lane["danger"]
 	command.move_axis = _axis_toward(player.x, target_x, danger)
-	command.bomb = player.can_bomb() and immediate_danger >= 2.2
+	command.bomb = _should_use_bomb(player, boss, immediate_danger, danger)
 	return command
 
 
 func _choose_intent_x(player: RefCounted, enemies: Array, boss: Dictionary, items: Array, danger: float) -> float:
-	if _should_collect_item(player, items, danger):
+	if _should_chase_item(player, items, danger):
 		return _best_item(items, player).x
 	if not enemies.is_empty() or not boss.is_empty():
 		return _best_attack_x(player, enemies, boss)
 	return player.x
 
 
-func _choose_lane(player: RefCounted, bullets: Array, enemies: Array, boss: Dictionary, intent_x: float) -> Dictionary:
+func _choose_lane(player: RefCounted, bullets: Array, enemies: Array, boss: Dictionary, items: Array, intent_x: float) -> Dictionary:
 	var candidates := _candidate_lanes(player.x, intent_x)
 	var best_x: float = player.x
 	var best_score := INF
@@ -43,7 +43,8 @@ func _choose_lane(player: RefCounted, bullets: Array, enemies: Array, boss: Dict
 		var travel_cost := absf(x - player.x) * (0.002 if danger < 1.0 else 0.004)
 		var intent_cost := absf(x - intent_x) * (0.006 if danger < 1.0 else 0.0008)
 		var edge_cost := 0.18 if x < 86.0 or x > Config.W - 86.0 else 0.0
-		var score := danger * 4.2 + travel_cost + intent_cost + edge_cost
+		var item_bonus := _item_lane_bonus(x, player, items, danger)
+		var score := danger * 4.2 + travel_cost + intent_cost + edge_cost - item_bonus
 		if score < best_score:
 			best_score = score
 			best_x = x
@@ -105,14 +106,41 @@ func _danger_at_x(test_x: float, player: RefCounted, bullets: Array, enemies: Ar
 
 	if not boss.is_empty() and boss.get("tell", 0.0) > 0.0 and absf(boss.x - test_x) < 118.0:
 		danger += 1.8
+	elif not boss.is_empty() and boss.get("phase", 0) >= 1 and absf(boss.x - test_x) < 54.0:
+		danger += 0.55
 	return danger
 
 
-func _should_collect_item(player: RefCounted, items: Array, danger: float) -> bool:
+func _should_chase_item(player: RefCounted, items: Array, danger: float) -> bool:
 	if items.is_empty() or danger > 0.85:
 		return false
 	var item := _best_item(items, player)
-	return item.y > Config.HUD + 40.0 and item.y < player.y + 28.0
+	var urgent: bool = (item.kind == "life" and player.lives <= 2) or (item.kind == "shield" and player.shield <= 0) or (item.kind == "bomb" and player.bombs <= 1)
+	var close_x := absf(item.x - player.x) < (210.0 if urgent else 120.0)
+	return urgent and close_x and item.y > player.y - 250.0 and item.y < player.y + 28.0
+
+
+func _item_lane_bonus(test_x: float, player: RefCounted, items: Array, danger: float) -> float:
+	if items.is_empty() or danger > 0.85:
+		return 0.0
+	var bonus := 0.0
+	for item in items:
+		if item.y < Config.HUD + 60.0 or item.y > player.y + 38.0:
+			continue
+		var horizontal := absf(item.x - test_x)
+		if horizontal > 92.0:
+			continue
+		var priority := 0.22
+		if item.kind == "life" and player.lives <= 2:
+			priority = 0.82
+		elif item.kind == "shield" and player.shield <= 0:
+			priority = 0.54
+		elif item.kind == "bomb" and player.bombs <= 2:
+			priority = 0.48
+		var approach := clampf(1.0 - horizontal / 92.0, 0.0, 1.0)
+		var timing := clampf(1.0 - absf(item.y - (player.y - 120.0)) / 260.0, 0.0, 1.0)
+		bonus = maxf(bonus, priority * approach * (0.5 + timing * 0.5))
+	return bonus
 
 
 func _best_item(items: Array, player: RefCounted) -> Dictionary:
@@ -135,7 +163,8 @@ func _best_item(items: Array, player: RefCounted) -> Dictionary:
 
 func _best_attack_x(player: RefCounted, enemies: Array, boss: Dictionary) -> float:
 	if not boss.is_empty():
-		return clampf(float(boss.x), MIN_X, MAX_X)
+		var side := 1.0 if player.x >= float(boss.x) else -1.0
+		return clampf(float(boss.x) + side * 72.0, MIN_X, MAX_X)
 	if enemies.is_empty():
 		return player.x
 
@@ -148,6 +177,23 @@ func _best_attack_x(player: RefCounted, enemies: Array, boss: Dictionary) -> flo
 			best_score = score
 			best = enemy
 	return clampf(float(best.x), MIN_X, MAX_X)
+
+
+func _should_use_bomb(player: RefCounted, boss: Dictionary, immediate_danger: float, lane_danger: float) -> bool:
+	if not player.can_bomb():
+		return false
+	if immediate_danger >= 2.15 or lane_danger >= 1.85:
+		return true
+	if boss.is_empty():
+		return false
+	var boss_hp_ratio: float = float(boss.hp) / maxf(1.0, float(boss.max_hp))
+	var boss_aligned: bool = absf(boss.x - player.x) < 205.0
+	var boss_pressure: bool = boss.get("phase", 0) >= 1 or boss.get("tell", 0.0) > 0.0
+	if boss_aligned and boss_pressure and player.bombs >= 2:
+		return true
+	if boss_aligned and boss_hp_ratio <= 0.38 and player.bombs >= 1:
+		return true
+	return false
 
 
 func _axis_toward(current_x: float, target_x: float, danger: float) -> float:
