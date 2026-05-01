@@ -23,9 +23,10 @@ func clear() -> void:
 func load_stage(stage_data: Dictionary, enemy_stats: Dictionary, difficulty: float) -> void:
 	clear()
 	var start_x := 148.0
-	var start_y := hud_y + 68.0
+	var start_y := hud_y + 128.0
 	var gap_x := 84.0
 	var gap_y := 58.0
+	var commander_y := hud_y + 64.0
 	for row in range(stage_data.rows):
 		for col in range(stage_data.cols):
 			var kind: String = stage_data.kinds[(row + col) % stage_data.kinds.size()]
@@ -54,9 +55,9 @@ func load_stage(stage_data: Dictionary, enemy_stats: Dictionary, difficulty: flo
 			"id": next_id,
 			"kind": "commander",
 			"x": width / 2.0,
-			"y": start_y - 12.0,
+			"y": commander_y,
 			"base_x": width / 2.0,
-			"base_y": start_y - 12.0,
+			"base_y": commander_y,
 			"hp": int(stats.hp) + int(difficulty),
 			"max_hp": int(stats.hp) + int(difficulty),
 			"t": randf() * 10.0,

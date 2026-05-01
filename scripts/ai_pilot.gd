@@ -40,11 +40,11 @@ func _choose_lane(player: RefCounted, bullets: Array, enemies: Array, boss: Dict
 	for candidate_x in candidates:
 		var x: float = candidate_x
 		var danger := _danger_at_x(x, player, bullets, enemies, boss)
-		var travel_cost := absf(x - player.x) * (0.002 if danger < 1.0 else 0.004)
-		var intent_cost := absf(x - intent_x) * (0.006 if danger < 1.0 else 0.0008)
+		var travel_cost := absf(x - player.x) * (0.0015 if danger < 1.0 else 0.0032)
+		var intent_cost := absf(x - intent_x) * (0.006 if danger < 0.85 else 0.00045)
 		var edge_cost := 0.18 if x < 86.0 or x > Config.W - 86.0 else 0.0
 		var item_bonus := _item_lane_bonus(x, player, items, danger, enemy_count)
-		var score := danger * 4.2 + travel_cost + intent_cost + edge_cost - item_bonus
+		var score := danger * 5.8 + travel_cost + intent_cost + edge_cost - item_bonus
 		if score < best_score:
 			best_score = score
 			best_x = x
@@ -83,16 +83,18 @@ func _danger_at_x(test_x: float, player: RefCounted, bullets: Array, enemies: Ar
 			continue
 		var vy: float = maxf(1.0, bullet.vy)
 		var time_to_player: float = (player.y - bullet.y) / vy
-		if time_to_player < -0.2 or time_to_player > 1.65:
+		if time_to_player < -0.2 or time_to_player > 2.15:
 			continue
 		var predicted_x: float = bullet.x + bullet.vx * time_to_player
 		var lateral: float = absf(predicted_x - test_x)
-		var radius: float = bullet.r + 52.0
-		if lateral > radius + 24.0:
+		var radius: float = bullet.r + 68.0
+		if lateral > radius + 34.0:
 			continue
-		var lane_ratio := clampf(1.0 - lateral / (radius + 24.0), 0.0, 1.0)
-		var urgency := clampf(1.65 - maxf(0.0, time_to_player), 0.25, 1.65)
-		var weight: float = lane_ratio * lane_ratio * urgency
+		var lane_ratio := clampf(1.0 - lateral / (radius + 34.0), 0.0, 1.0)
+		var urgency := clampf(2.15 - maxf(0.0, time_to_player), 0.32, 2.15)
+		var weight: float = lane_ratio * lane_ratio * urgency * 1.24
+		if time_to_player < 0.55:
+			weight *= 1.55
 		danger += weight
 
 	for enemy in enemies:
@@ -185,7 +187,7 @@ func _best_attack_x(player: RefCounted, enemies: Array, boss: Dictionary) -> flo
 func _should_use_bomb(player: RefCounted, boss: Dictionary, immediate_danger: float, lane_danger: float) -> bool:
 	if not player.can_bomb():
 		return false
-	if immediate_danger >= 2.15 or lane_danger >= 1.85:
+	if immediate_danger >= 2.55 or lane_danger >= 2.25:
 		return true
 	if boss.is_empty():
 		return false
@@ -201,7 +203,7 @@ func _should_use_bomb(player: RefCounted, boss: Dictionary, immediate_danger: fl
 
 func _axis_toward(current_x: float, target_x: float, danger: float) -> float:
 	var delta := target_x - current_x
-	var dead_zone := 10.0 if danger < 1.0 else 4.0
+	var dead_zone := 10.0 if danger < 0.9 else 3.0
 	if absf(delta) <= dead_zone:
 		return 0.0
-	return clampf(delta / (52.0 if danger >= 1.0 else 78.0), -1.0, 1.0)
+	return clampf(delta / (42.0 if danger >= 1.0 else 78.0), -1.0, 1.0)

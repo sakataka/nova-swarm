@@ -279,6 +279,7 @@ func _update_game(dt: float) -> void:
 func _update_upgrade(dt: float) -> void:
 	upgrade_timer += dt
 	if control_mode == ControlMode.AI and upgrade_timer >= 0.75:
+		upgrade_selected = _choose_ai_upgrade_index()
 		_apply_selected_upgrade()
 
 
@@ -332,6 +333,34 @@ func _roll_upgrade_options() -> Array[Dictionary]:
 	for i in range(mini(3, pool.size())):
 		result.append(pool[i])
 	return result
+
+
+func _choose_ai_upgrade_index() -> int:
+	var best_index := 0
+	var best_score := -INF
+	for i in range(upgrade_options.size()):
+		var option: Dictionary = upgrade_options[i]
+		var upgrade_score := _score_ai_upgrade(str(option.id))
+		if upgrade_score > best_score:
+			best_score = upgrade_score
+			best_index = i
+	return best_index
+
+
+func _score_ai_upgrade(upgrade_id: String) -> float:
+	if upgrade_id == "shield":
+		return 9.0 if player.shield <= 0 else 5.5 if player.shield < player.shield_max else 2.8
+	if upgrade_id == "bomb":
+		return 8.2 if player.bombs <= 1 else 5.8 if player.bombs <= 3 else 3.6
+	if upgrade_id == "rapid":
+		return 7.4 - (1.0 - player.shot_cooldown_scale) * 8.0
+	if upgrade_id == "resonance":
+		return 6.8 if player.resonance_gain_scale < 1.55 else 3.5
+	if upgrade_id == "overdrive":
+		return 6.2 if player.overdrive_duration_bonus < 3.4 else 3.2
+	if upgrade_id == "drop":
+		return 5.6 if item_drop_bonus < 0.12 else 3.0
+	return 0.0
 
 
 func _apply_selected_upgrade() -> void:
@@ -593,22 +622,22 @@ func _has_stage_result(stage_index: int) -> bool:
 
 
 func _rank_for_stage(stage_index: int, score_gain: int, max_chain: int, damage: int, bombs_used: int, clear_time: float) -> String:
-	var score_targets := [4200.0, 6200.0, 8200.0, 10200.0, 11800.0]
+	var score_targets := [5200.0, 7600.0, 10000.0, 12400.0, 15000.0]
 	var target: float = score_targets[clampi(stage_index, 0, score_targets.size() - 1)]
 	var points := minf(1.25, float(score_gain) / target) * 70.0
 	points += minf(20.0, float(max_chain) * 1.15)
 	points += 12.0 if damage == 0 else maxf(0.0, 7.0 - float(damage) * 2.2)
 	points += 8.0 if bombs_used == 0 else maxf(0.0, 4.0 - float(bombs_used))
 	points += 8.0 if clear_time <= 38.0 else 4.0 if clear_time <= 55.0 else 0.0
-	if points >= 112.0:
+	if points >= 122.0 and damage == 0 and bombs_used == 0 and max_chain >= 18:
 		return "SSS"
-	if points >= 100.0:
+	if points >= 108.0 and damage <= 1:
 		return "SS"
-	if points >= 88.0:
+	if points >= 94.0:
 		return "S"
-	if points >= 74.0:
+	if points >= 78.0:
 		return "A"
-	if points >= 58.0:
+	if points >= 62.0:
 		return "B"
 	return "C"
 
