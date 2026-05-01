@@ -54,7 +54,7 @@ func _ready() -> void:
 	font = ThemeDB.fallback_font
 	sprite_texture = _load_sprite_texture()
 	background_texture = load("res://public/assets/backgrounds.png")
-	ui_texture = _load_png_texture("res://public/assets/ui_atlas.png")
+	ui_texture = _load_imported_or_png_texture("res://public/assets/ui_atlas.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
 	_parse_web_query()
@@ -569,6 +569,13 @@ func _load_png_texture(path: String) -> Texture2D:
 		return null
 	image.convert(Image.FORMAT_RGBA8)
 	return ImageTexture.create_from_image(image)
+
+
+func _load_imported_or_png_texture(path: String) -> Texture2D:
+	var imported := load(path)
+	if imported is Texture2D:
+		return imported
+	return _load_png_texture(path)
 
 
 func _parse_web_query() -> void:
