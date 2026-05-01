@@ -7,13 +7,47 @@ func _initialize() -> void:
 	await process_frame
 
 	_assert(scene.audio_manager.current_music_key == "title", "title music starts on boot")
+	_assert(scene.state == scene.GameState.TITLE, "game starts on title")
+	_assert(scene.selected_control_mode == scene.ControlMode.MANUAL, "manual mode is selected by default")
+	_assert(scene.control_mode == scene.ControlMode.MANUAL, "manual mode is active by default")
+
+	scene._toggle_selected_control_mode()
+	_assert(scene.selected_control_mode == scene.ControlMode.AI, "title selection toggles to ai")
+	scene._toggle_selected_control_mode()
+	_assert(scene.selected_control_mode == scene.ControlMode.MANUAL, "title selection toggles back to manual")
 
 	scene.reset()
 	_assert(scene.state == scene.GameState.PLAYING, "reset starts play")
+	_assert(scene.control_mode == scene.ControlMode.MANUAL, "manual selection starts manual play")
 	_assert(scene.stage == 0, "reset loads stage 1")
 	_assert(scene.swarm.enemies.size() == 24, "stage 1 enemy count")
 	_assert(scene.hitstop == 0.0, "stage banner does not stop play")
 	_assert(scene.audio_manager.current_music_key == "stage_drive", "reset starts stage drive music")
+
+	scene._toggle_control_mode()
+	_assert(scene.control_mode == scene.ControlMode.AI, "toggle switches play to ai")
+	_assert(scene.selected_control_mode == scene.ControlMode.AI, "toggle keeps ai for next run")
+	scene._toggle_control_mode()
+	_assert(scene.control_mode == scene.ControlMode.MANUAL, "toggle switches play back to manual")
+
+	scene.selected_control_mode = scene.ControlMode.AI
+	scene.reset()
+	_assert(scene.control_mode == scene.ControlMode.AI, "ai selection starts ai play")
+	scene.projectiles.clear()
+	scene.player.shot_cd = 0.0
+	scene._update_game(1.0 / 60.0)
+	_assert(scene.projectiles.bullets.any(func(bullet: Dictionary) -> bool: return not bullet.enemy), "ai mode fires at enemies")
+
+	var ai_command: Dictionary = scene.ai_pilot.get_command(scene.player, scene.swarm.enemies, scene.boss_controller.boss, [], [])
+	_assert(ai_command.shoot, "ai shoots when enemies are present")
+	var item_x: float = scene.player.x + 120.0
+	ai_command = scene.ai_pilot.get_command(scene.player, [], {}, [], [{"kind": "shield", "x": item_x, "y": scene.player.y - 120.0, "vy": 0.0, "t": 0.0}])
+	_assert(ai_command.move_axis > 0.0, "ai moves toward collectible item")
+	scene.load_stage(4)
+	scene.boss_controller.boss.x = scene.player.x + 120.0
+	ai_command = scene.ai_pilot.get_command(scene.player, [], scene.boss_controller.boss, [], [])
+	_assert(ai_command.shoot, "ai shoots at boss")
+	_assert(ai_command.move_axis != 0.0, "ai lines up with boss")
 
 	var bombs_before: int = scene.player.bombs
 	scene._use_bomb()

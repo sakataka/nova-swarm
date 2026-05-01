@@ -8,10 +8,14 @@ const ProjectileManagerScript := preload("res://scripts/projectile_manager.gd")
 const EnemySwarmScript := preload("res://scripts/enemy_swarm.gd")
 const BossControllerScript := preload("res://scripts/boss_controller.gd")
 const HudScript := preload("res://scripts/hud.gd")
+const AiPilotScript := preload("res://scripts/ai_pilot.gd")
 
 enum GameState { TITLE, PLAYING, PAUSED, GAME_OVER, VICTORY }
+enum ControlMode { MANUAL, AI }
 
 var state := GameState.TITLE
+var selected_control_mode := ControlMode.MANUAL
+var control_mode := ControlMode.MANUAL
 var stage := 0
 var score := 0
 var stage_timer := 0.0
@@ -27,6 +31,7 @@ var projectiles = ProjectileManagerScript.new()
 var swarm = EnemySwarmScript.new()
 var boss_controller = BossControllerScript.new()
 var hud = HudScript.new()
+var ai_pilot = AiPilotScript.new()
 var audio_manager
 
 var explosions: Array[Dictionary] = []
@@ -148,8 +153,14 @@ func _update_feedback(dt: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_accept") and state in [GameState.TITLE, GameState.GAME_OVER, GameState.VICTORY]:
+	if state == GameState.TITLE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
+		_toggle_selected_control_mode()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_accept") and state in [GameState.TITLE, GameState.GAME_OVER, GameState.VICTORY]:
 		reset()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("toggle_ai") and state in [GameState.PLAYING, GameState.PAUSED]:
+		_toggle_control_mode()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("pause_game") and state == GameState.PLAYING:
 		state = GameState.PAUSED
@@ -168,6 +179,7 @@ func reset() -> void:
 	stage = 0
 	score = 0
 	difficulty = 1.0
+	control_mode = selected_control_mode
 	player.reset_run(Config.W / 2.0)
 	state = GameState.PLAYING
 	audio_manager.set_music_overdriven(false)
@@ -210,13 +222,14 @@ func _recalculate_difficulty() -> void:
 
 func _update_game(dt: float) -> void:
 	stage_timer += dt
-	player.update(dt, _read_move_axis())
+	var command := _read_player_command()
+	player.update(dt, command["move_axis"])
 
-	if Input.is_action_just_pressed("overdrive") and player.can_overdrive():
+	if command["overdrive"] and player.can_overdrive():
 		_start_overdrive()
-	if Input.is_action_pressed("shoot") and player.can_shoot():
+	if command["shoot"] and player.can_shoot():
 		_fire_player()
-	if Input.is_action_pressed("bomb") and player.can_bomb():
+	if command["bomb"] and player.can_bomb():
 		_use_bomb()
 
 	var st: Dictionary = Config.STAGES[stage]
@@ -239,8 +252,24 @@ func _update_overdrive_feedback() -> void:
 	audio_manager.set_music_overdriven(active and state == GameState.PLAYING)
 
 
-func _read_move_axis() -> float:
-	return Input.get_axis("move_left", "move_right")
+func _read_player_command() -> Dictionary:
+	if control_mode == ControlMode.AI:
+		return ai_pilot.get_command(player, swarm.enemies, boss_controller.boss, projectiles.bullets, items)
+	return {
+		"move_axis": Input.get_axis("move_left", "move_right"),
+		"shoot": Input.is_action_pressed("shoot"),
+		"bomb": Input.is_action_pressed("bomb"),
+		"overdrive": Input.is_action_just_pressed("overdrive"),
+	}
+
+
+func _toggle_selected_control_mode() -> void:
+	selected_control_mode = ControlMode.AI if selected_control_mode == ControlMode.MANUAL else ControlMode.MANUAL
+
+
+func _toggle_control_mode() -> void:
+	control_mode = ControlMode.AI if control_mode == ControlMode.MANUAL else ControlMode.MANUAL
+	selected_control_mode = control_mode
 
 
 func _fire_player() -> void:
@@ -447,6 +476,7 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, Config.W, Config.H), Color("#04050a"))
 	_draw_background()
 	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, PlayerScript.OVERDRIVE_DURATION)
+	_draw_control_mode_badge()
 	_draw_playfield()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if flash > 0.0:
@@ -585,17 +615,50 @@ func _draw_overlay() -> void:
 	var sub := "PRESS P TO RETURN" if state == GameState.PAUSED else "PRESS ENTER TO START"
 	if state == GameState.TITLE and ui_texture:
 		draw_texture_rect_region(ui_texture, Rect2(130, Config.HUD + 92, 700, 214), ui_regions.logo)
-		hud.draw_centered(self, font, sub, Config.HUD + 330, 22, Color("#ff7af0"))
-		hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 378, 17, Color(0.89, 0.98, 1.0, 0.82))
+		_draw_title_mode_select(Config.HUD + 330.0)
+		hud.draw_centered(self, font, sub, Config.HUD + 392, 22, Color("#ff7af0"))
+		hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 440, 17, Color(0.89, 0.98, 1.0, 0.82))
 	elif state == GameState.VICTORY and ui_texture:
 		draw_texture_rect_region(ui_texture, Rect2(146, Config.HUD + 72, 668, 210), ui_regions.ending)
 		_draw_arcade_title(title, Config.HUD + 330.0, 44, Color("#dffcff"))
 		hud.draw_centered(self, font, "FINAL SCORE " + str(score).pad_zeros(7), Config.HUD + 382, 22, Color("#ffef8b"))
-		hud.draw_centered(self, font, sub, Config.HUD + 430, 20, Color("#ff7af0"))
+		hud.draw_centered(self, font, _control_mode_label(control_mode) + " / PRESS ENTER TO START", Config.HUD + 430, 20, Color("#ff7af0"))
 	else:
 		_draw_arcade_title(title, Config.HUD + 214.0, 58, Color("#dffcff"))
 		hud.draw_centered(self, font, sub, Config.HUD + 292, 22, Color("#ff7af0"))
 		hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 340, 17, Color(0.89, 0.98, 1.0, 0.82))
+
+
+func _draw_control_mode_badge() -> void:
+	var label := _control_mode_label(control_mode)
+	var color := Color("#fff06a") if control_mode == ControlMode.AI else Color("#72eaff")
+	var x := 662.0
+	var y := 42.0
+	var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
+	draw_rect(Rect2(x - 9.0, y - 15.0, text_size.x + 18.0, 20.0), Color(0.0, 0.0, 0.0, 0.34))
+	draw_rect(Rect2(x - 9.0, y - 15.0, text_size.x + 18.0, 20.0), Color(color, 0.12), false, 1.0)
+	draw_string(font, Vector2(x, y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+
+
+func _draw_title_mode_select(y: float) -> void:
+	var manual := "MANUAL"
+	var ai := "AI PILOT"
+	var manual_color := Color("#fff06a") if selected_control_mode == ControlMode.MANUAL else Color(0.89, 0.98, 1.0, 0.56)
+	var ai_color := Color("#fff06a") if selected_control_mode == ControlMode.AI else Color(0.89, 0.98, 1.0, 0.56)
+	var manual_text := "< " + manual + " >" if selected_control_mode == ControlMode.MANUAL else manual
+	var ai_text := "< " + ai + " >" if selected_control_mode == ControlMode.AI else ai
+	var gap := 58.0
+	var manual_size := font.get_string_size(manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
+	var ai_size := font.get_string_size(ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
+	var total_width := manual_size.x + gap + ai_size.x
+	var start_x := (Config.W - total_width) / 2.0
+	draw_string(font, Vector2(start_x, y), manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, manual_color)
+	draw_string(font, Vector2(start_x + manual_size.x + gap, y), ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ai_color)
+	hud.draw_centered(self, font, "LEFT / RIGHT SELECT", y + 36.0, 14, Color(0.89, 0.98, 1.0, 0.66))
+
+
+func _control_mode_label(mode: int) -> String:
+	return "AI PILOT" if mode == ControlMode.AI else "MANUAL"
 
 
 func _draw_stage_banner(text: String, y: float, alpha: float) -> void:
