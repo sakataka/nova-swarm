@@ -61,7 +61,7 @@ export_presets.cfg
 - `boss_controller.gd`: ボスのフェーズ、攻撃、ビーム予兆、部位破壊
 - `projectile_manager.gd`: 自弾・敵弾、分岐ショットの生成と更新
 - `hud.gd`: HUD描画
-- `audio_manager.gd`: 効果音、Resonate対応BGM切り替え、クロスフェード、ミュート、headless時の音声無効化
+- `audio_manager.gd`: 効果音、Resonate対応BGM切り替え、Overdrive用BGMレイヤー、クロスフェード、ミュート、headless時の音声無効化
 
 ## 主なゲームシステム
 
@@ -81,7 +81,7 @@ export_presets.cfg
 - `public/assets/projectile_atlas.png`: 自弾、Overdrive弾、敵弾、ボス弾用の生成スプライトアトラス
 - `public/assets/final_boss.png`: 5面ボス用の高解像度生成スプライト
 - `public/assets/boss_weakpoints.png`: ボス部位の生存/破壊済み表示用スプライトアトラス
-- `public/assets/audio/music/*.wav`: タイトル、通常戦、後半戦、ボス、勝利、ゲームオーバー用のネオンSTG系BGMループ
+- `public/assets/audio/music/*.wav`: タイトル、通常戦、後半戦、ボス、勝利、ゲームオーバー用のネオンSTG系BGMループ。通常戦、後半戦、ボス戦にはResonateの追加stemとして鳴るOverdrive用シンセ/パーカッションレイヤーを実行時生成しています。
 
 ## ゲーム品質改善
 
@@ -89,6 +89,7 @@ export_presets.cfg
 - スコアチェイン、ノーミスステージボーナス、成績に応じた軽い難易度補正を追加しています。
 - 敵弾のかすり、連続撃破、ボスヒットで溜まるResonanceゲージと、満タン時に発動できるOverdriveを追加しています。
 - Overdrive中に敵弾をスコア結晶へ変換し、攻撃的な回避に得点上の価値を持たせています。
+- Overdrive中はResonateのBGM stemを有効化し、通常戦、後半戦、ボス戦それぞれで専用レイヤーが重なってテンションが上がります。
 - ステージ専用ギミック、ビルド分岐アップグレード、ボス部位破壊、リザルト改善ヒントを追加しています。
 - 自弾・敵弾・5面ボス・ボス弱点表示を生成スプライトに差し替え、背景や岩障害物と同じ赤い鉱脈系の世界観に寄せています。
 - AI Pilotの可視化としてAI Rivalスコアを追加しています。
