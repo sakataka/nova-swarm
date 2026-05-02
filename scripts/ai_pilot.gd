@@ -6,6 +6,8 @@ const Config := preload("res://scripts/game_config.gd")
 const COMMAND_IDLE := {"move_axis": 0.0, "shoot": false, "bomb": false, "overdrive": false}
 const MIN_X := 52.0
 const MAX_X := Config.W - 52.0
+const BOSS_TELL_DANGER_WIDTH := 154.0
+const BOSS_BEAM_DANGER_WIDTH := 136.0
 
 
 func get_command(player: RefCounted, enemies: Array, boss: Dictionary, bullets: Array, items: Array) -> Dictionary:
@@ -81,18 +83,22 @@ func _danger_at_x(test_x: float, player: RefCounted, bullets: Array, enemies: Ar
 	for bullet in bullets:
 		if not bullet.enemy:
 			continue
+		var is_boss_beam: bool = str(bullet.get("sprite", "")) == "beam"
 		var vy: float = maxf(1.0, bullet.vy)
 		var time_to_player: float = (player.y - bullet.y) / vy
 		if time_to_player < -0.2 or time_to_player > 2.15:
 			continue
 		var predicted_x: float = bullet.x + bullet.vx * time_to_player
 		var lateral: float = absf(predicted_x - test_x)
-		var radius: float = bullet.r + 68.0
-		if lateral > radius + 34.0:
+		var radius: float = bullet.r + (BOSS_BEAM_DANGER_WIDTH if is_boss_beam else 68.0)
+		var slack := 54.0 if is_boss_beam else 34.0
+		if lateral > radius + slack:
 			continue
-		var lane_ratio := clampf(1.0 - lateral / (radius + 34.0), 0.0, 1.0)
+		var lane_ratio := clampf(1.0 - lateral / (radius + slack), 0.0, 1.0)
 		var urgency := clampf(2.15 - maxf(0.0, time_to_player), 0.32, 2.15)
 		var weight: float = lane_ratio * lane_ratio * urgency * 1.24
+		if is_boss_beam:
+			weight *= 1.75
 		if time_to_player < 0.55:
 			weight *= 1.55
 		danger += weight
@@ -106,9 +112,12 @@ func _danger_at_x(test_x: float, player: RefCounted, bullets: Array, enemies: Ar
 			var weight_enemy: float = (1.0 - lateral_enemy / radius_enemy) * 1.7
 			danger += weight_enemy
 
-	if not boss.is_empty() and boss.get("tell", 0.0) > 0.0 and absf(boss.x - test_x) < 118.0:
-		danger += 1.8
-	elif not boss.is_empty() and boss.get("phase", 0) >= 1 and absf(boss.x - test_x) < 54.0:
+	if not boss.is_empty() and boss.get("tell", 0.0) > 0.0:
+		var tell_lateral := absf(float(boss.x) - test_x)
+		if tell_lateral < BOSS_TELL_DANGER_WIDTH:
+			var tell_ratio := clampf(1.0 - tell_lateral / BOSS_TELL_DANGER_WIDTH, 0.0, 1.0)
+			danger += 1.15 + tell_ratio * tell_ratio * 2.15
+	elif not boss.is_empty() and boss.get("phase", 0) >= 1 and absf(boss.x - test_x) < 64.0:
 		danger += 0.55
 	return danger
 

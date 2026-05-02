@@ -41,6 +41,7 @@ scripts/hud.gd
 scripts/audio_manager.gd
 scripts/smoke_test.gd
 scripts/gameplay_test.gd
+scripts/ai_boss_stage5_test.gd
 public/assets/spritesheet.png
 public/assets/backgrounds.png
 public/assets/ui_atlas.png
@@ -108,6 +109,12 @@ export_presets.cfg
 
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/gameplay_test.gd
+```
+
+AIボス戦テスト:
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/ai_boss_stage5_test.gd
 ```
 
 AIシミュレーション:
