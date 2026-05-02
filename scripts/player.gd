@@ -18,6 +18,11 @@ var shot_cooldown_scale := 1.0
 var overdrive_duration_bonus := 0.0
 var resonance_gain_scale := 1.0
 var shield_max := 2
+var shot_pattern := "twin"
+var graze_chain_bonus := false
+var bomb_refund_chance := 0.0
+var shield_retaliate := false
+var close_kill_extend := false
 
 var _min_x := 42.0
 var _max_x := 918.0
@@ -150,3 +155,8 @@ func reset_upgrade_modifiers() -> void:
 	overdrive_duration_bonus = 0.0
 	resonance_gain_scale = 1.0
 	shield_max = 2
+	shot_pattern = "twin"
+	graze_chain_bonus = false
+	bomb_refund_chance = 0.0
+	shield_retaliate = false
+	close_kill_extend = false

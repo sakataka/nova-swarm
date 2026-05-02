@@ -72,8 +72,16 @@ func _initialize() -> void:
 	scene._apply_upgrade("rapid")
 	_assert(scene.player.shot_cooldown_scale < 1.0, "rapid upgrade improves shot cooldown")
 	scene.bomb_range_scale = 1.0
-	scene._apply_upgrade("bomb")
-	_assert(scene.bomb_range_scale > 1.0, "bomb upgrade increases range")
+	scene._apply_upgrade("bomb_refund")
+	_assert(scene.bomb_range_scale > 1.0, "bomb loop increases range")
+	_assert(scene.player.bomb_refund_chance > 0.0, "bomb loop enables refunds")
+	scene._apply_upgrade("spread")
+	_assert(scene.player.shot_pattern == "wide", "spread upgrade changes shot pattern")
+	scene._apply_upgrade("graze_core")
+	_assert(scene.player.graze_chain_bonus, "graze core enables graze chain")
+	scene._apply_upgrade("shield_burst")
+	_assert(scene.player.shield_retaliate, "shield burst enables counter")
+	scene.player.shot_pattern = "twin"
 
 	scene.projectiles.clear()
 	scene.player.resonance = 0.0
@@ -90,6 +98,9 @@ func _initialize() -> void:
 	scene._fire_player()
 	_assert(scene.projectiles.bullets.size() == 3, "overdrive shot fires three bullets")
 	_assert(scene.projectiles.bullets.any(func(bullet: Dictionary) -> bool: return bullet.power == 2), "overdrive shot adds high power bullet")
+	scene.projectiles.bullets.append({"x": scene.player.x + 24.0, "y": scene.player.y - 90.0, "vx": 0.0, "vy": 0.0, "enemy": true, "r": 5.0, "power": 1, "color": Color.WHITE})
+	scene._update_stage_gimmicks(1.0 / 60.0)
+	_assert(scene.score_crystals.size() > 0, "overdrive converts nearby enemy bullets into score crystals")
 	scene.player.update(5.1, 0.0)
 	_assert(not scene.player.is_overdrive_active(), "overdrive expires back to normal")
 	scene.projectiles.clear()
@@ -125,9 +136,13 @@ func _initialize() -> void:
 	_assert(scene.state == scene.GameState.PLAYING, "upgrade confirmation resumes play")
 	scene.load_stage(2)
 	_assert(scene.audio_manager.current_music_key == "stage_pressure", "later stages use pressure music")
+	_assert(scene.stage_hazards.any(func(hazard: Dictionary) -> bool: return hazard.kind == "rock"), "rock belt spawns rock hazards")
+	scene.load_stage(3)
+	_assert(scene.stage_hazards.any(func(hazard: Dictionary) -> bool: return str(hazard.kind).begins_with("plasma")), "plasma nest spawns reflectors")
 
 	scene.load_stage(4)
 	_assert(scene.boss_controller.is_alive(), "boss stage spawns boss")
+	_assert(scene.boss_controller.boss.has("parts"), "boss has breakable parts")
 	_assert(scene.audio_manager.current_music_key == "boss_core", "boss stage starts boss music")
 	var boss_hp: int = scene.boss_controller.boss.hp
 	scene.projectiles.bullets.append({"x": scene.boss_controller.boss.x + 220.0, "y": scene.boss_controller.boss.y, "vx": 0.0, "vy": 0.0, "enemy": false, "r": 4.0, "power": 1, "color": Color.WHITE})

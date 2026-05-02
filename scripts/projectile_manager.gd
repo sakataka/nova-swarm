@@ -17,14 +17,20 @@ func clear() -> void:
 	bullets.clear()
 
 
-func fire_player(x: float, y: float, overdrive := false) -> void:
+func fire_player(x: float, y: float, overdrive := false, pattern := "twin") -> void:
 	if overdrive:
 		bullets.append({"x": x, "y": y - 54.0, "vx": 0.0, "vy": -760.0, "enemy": false, "r": 6.0, "power": 2, "color": Color("#fff06a")})
 		bullets.append({"x": x - 20.0, "y": y - 42.0, "vx": -95.0, "vy": -700.0, "enemy": false, "r": 5.0, "power": 1, "color": Color("#49dfff")})
 		bullets.append({"x": x + 20.0, "y": y - 42.0, "vx": 95.0, "vy": -700.0, "enemy": false, "r": 5.0, "power": 1, "color": Color("#ff7af0")})
+		if pattern == "wide":
+			bullets.append({"x": x - 38.0, "y": y - 34.0, "vx": -175.0, "vy": -620.0, "enemy": false, "r": 4.0, "power": 1, "color": Color("#81ff88")})
+			bullets.append({"x": x + 38.0, "y": y - 34.0, "vx": 175.0, "vy": -620.0, "enemy": false, "r": 4.0, "power": 1, "color": Color("#81ff88")})
 		return
 	bullets.append({"x": x - 12.0, "y": y - 44.0, "vx": 0.0, "vy": -660.0, "enemy": false, "r": 4.0, "power": 1, "color": Color("#49dfff")})
 	bullets.append({"x": x + 12.0, "y": y - 44.0, "vx": 0.0, "vy": -660.0, "enemy": false, "r": 4.0, "power": 1, "color": Color("#49dfff")})
+	if pattern == "wide":
+		bullets.append({"x": x - 30.0, "y": y - 34.0, "vx": -135.0, "vy": -610.0, "enemy": false, "r": 3.5, "power": 1, "color": Color("#81ff88")})
+		bullets.append({"x": x + 30.0, "y": y - 34.0, "vx": 135.0, "vy": -610.0, "enemy": false, "r": 3.5, "power": 1, "color": Color("#81ff88")})
 
 
 func fire_enemy(enemy: Dictionary, player_x: float, enemy_stats: Dictionary) -> void:

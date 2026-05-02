@@ -49,6 +49,11 @@ var audio_manager
 var explosions: Array[Dictionary] = []
 var bomb_waves: Array[Dictionary] = []
 var items: Array[Dictionary] = []
+var stage_hazards: Array[Dictionary] = []
+var score_crystals: Array[Dictionary] = []
+var ai_danger_lanes: Array[Dictionary] = []
+var ai_rival_score := 0
+var ai_rival_timer := 0.0
 var sprite_texture: Texture2D
 var background_texture: Texture2D
 var ui_texture: Texture2D
@@ -209,6 +214,8 @@ func reset() -> void:
 	upgrade_selected = 0
 	upgrade_timer = 0.0
 	stage_results.clear()
+	ai_rival_score = 0
+	ai_rival_timer = 0.0
 	control_mode = selected_control_mode
 	player.reset_run(Config.W / 2.0)
 	state = GameState.PLAYING
@@ -227,6 +234,9 @@ func load_stage(index: int) -> void:
 	explosions.clear()
 	bomb_waves.clear()
 	items.clear()
+	stage_hazards.clear()
+	score_crystals.clear()
+	ai_danger_lanes.clear()
 	swarm.clear()
 	boss_controller.clear()
 	player.start_stage(Config.W / 2.0)
@@ -237,18 +247,53 @@ func load_stage(index: int) -> void:
 	var st: Dictionary = Config.STAGES[index]
 	if st.boss:
 		boss_controller.spawn()
+		_setup_stage_gimmicks()
 		audio_manager.play_music("boss_core")
 		audio_manager.play_sfx("boss")
 		return
 
 	audio_manager.play_music("stage_pressure" if index >= 2 else "stage_drive")
 	swarm.load_stage(st, Config.ENEMY_STATS, difficulty)
+	_setup_stage_gimmicks()
 
 
 func _recalculate_difficulty() -> void:
 	var score_pressure := minf(0.18, float(score) / 90000.0)
 	var survival_pressure := 0.06 if player.no_miss_stage else 0.0
 	difficulty = 1.0 + float(stage) * 0.08 + score_pressure + survival_pressure
+
+
+func _setup_stage_gimmicks() -> void:
+	stage_hazards.clear()
+	if stage == 2:
+		for i in range(6):
+			stage_hazards.append({
+				"kind": "rock",
+				"x": 150.0 + float(i) * 132.0,
+				"y": Config.HUD + 132.0 + float(i % 3) * 118.0,
+				"r": 28.0 + float(i % 2) * 9.0,
+				"hp": 3 + i % 2,
+				"t": float(i) * 0.7,
+			})
+	elif stage == 3:
+		stage_hazards.append({"kind": "plasma_left", "x": 34.0, "t": 0.0})
+		stage_hazards.append({"kind": "plasma_right", "x": Config.W - 34.0, "t": 0.0})
+
+
+func _update_stage_gimmicks(dt: float) -> void:
+	if stage == 2:
+		for hazard in stage_hazards:
+			hazard.t += dt
+			hazard.y += sin(stage_timer * 0.7 + hazard.t) * 10.0 * dt
+			hazard.x += cos(stage_timer * 0.5 + hazard.t) * 14.0 * dt
+			hazard.x = clampf(hazard.x, 92.0, Config.W - 92.0)
+		_check_rock_collisions()
+	elif stage == 3:
+		_update_plasma_reflectors()
+	if player.is_overdrive_active():
+		_convert_overdrive_bullets(dt)
+	_update_score_crystals(dt)
+	_update_ai_rival(dt)
 
 
 func _update_game(dt: float) -> void:
@@ -268,6 +313,7 @@ func _update_game(dt: float) -> void:
 	if boss_controller.update(dt, projectiles):
 		audio_manager.play_sfx("boss")
 	projectiles.update(dt)
+	_update_stage_gimmicks(dt)
 	_update_overdrive_feedback()
 	_update_explosions(dt)
 	_update_items(dt)
@@ -348,14 +394,16 @@ func _choose_ai_upgrade_index() -> int:
 
 
 func _score_ai_upgrade(upgrade_id: String) -> float:
-	if upgrade_id == "shield":
+	if upgrade_id == "shield_burst":
 		return 9.0 if player.shield <= 0 else 5.5 if player.shield < player.shield_max else 2.8
-	if upgrade_id == "bomb":
+	if upgrade_id == "bomb_refund":
 		return 8.2 if player.bombs <= 1 else 5.8 if player.bombs <= 3 else 3.6
+	if upgrade_id == "spread":
+		return 7.9 if player.shot_pattern != "wide" else 2.4
 	if upgrade_id == "rapid":
 		return 7.4 - (1.0 - player.shot_cooldown_scale) * 8.0
-	if upgrade_id == "resonance":
-		return 6.8 if player.resonance_gain_scale < 1.55 else 3.5
+	if upgrade_id == "graze_core":
+		return 7.2 if not player.graze_chain_bonus else 3.0
 	if upgrade_id == "overdrive":
 		return 6.2 if player.overdrive_duration_bonus < 3.4 else 3.2
 	if upgrade_id == "drop":
@@ -377,22 +425,28 @@ func _apply_selected_upgrade() -> void:
 func _apply_upgrade(upgrade_id: String) -> void:
 	if upgrade_id == "rapid":
 		player.shot_cooldown_scale = maxf(0.68, player.shot_cooldown_scale * 0.88)
+	elif upgrade_id == "spread":
+		player.shot_pattern = "wide"
 	elif upgrade_id == "overdrive":
 		player.overdrive_duration_bonus += 1.1
-	elif upgrade_id == "resonance":
-		player.resonance_gain_scale *= 1.16
-	elif upgrade_id == "bomb":
-		bomb_range_scale += 0.18
-	elif upgrade_id == "shield":
+		player.close_kill_extend = true
+	elif upgrade_id == "graze_core":
+		player.resonance_gain_scale *= 1.18
+		player.graze_chain_bonus = true
+	elif upgrade_id == "bomb_refund":
+		bomb_range_scale += 0.16
+		player.bomb_refund_chance = minf(0.55, player.bomb_refund_chance + 0.28)
+	elif upgrade_id == "shield_burst":
 		player.shield_max = mini(5, player.shield_max + 1)
 		player.shield = mini(player.shield_max, player.shield + 1)
+		player.shield_retaliate = true
 	elif upgrade_id == "drop":
 		item_drop_bonus += 0.045
 
 
 func _fire_player() -> void:
 	player.mark_shot()
-	projectiles.fire_player(player.x, player.y, player.is_overdrive_active())
+	projectiles.fire_player(player.x, player.y, player.is_overdrive_active(), player.shot_pattern)
 	audio_manager.play_sfx("shot")
 
 
@@ -420,6 +474,7 @@ func _use_bomb() -> void:
 	hitstop = 0.025
 	var blast := {"x": player.x, "y": player.y - 54.0, "t": 0.0, "width": 172.0 * bomb_range_scale}
 	bomb_waves.append(blast)
+	var bomb_kills := 0
 
 	var kept_bullets: Array[Dictionary] = []
 	for bullet in projectiles.bullets:
@@ -430,6 +485,7 @@ func _use_bomb() -> void:
 	for enemy in swarm.enemies:
 		if absf(enemy.x - blast.x) < blast.width * 0.54 and enemy.y < player.y - 22.0:
 			enemy.hp = 0
+			bomb_kills += 1
 			explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer"]})
 			score += int(enemy.score * 0.6)
 			if enemy.kind == "commander":
@@ -445,6 +501,10 @@ func _use_bomb() -> void:
 
 	for i in range(7):
 		explosions.append({"x": blast.x + sin(i * 2.2) * 42.0, "y": player.y - 110.0 - i * 74.0, "t": -i * 0.035, "big": i % 2 == 0})
+	if bomb_kills >= 3 and player.bomb_refund_chance > 0.0 and randf() < player.bomb_refund_chance:
+		player.bombs = mini(5, player.bombs + 1)
+		score += 450
+		audio_manager.play_sfx("clear")
 
 
 func _update_explosions(dt: float) -> void:
@@ -462,6 +522,104 @@ func _update_items(dt: float) -> void:
 		item.y += item.vy * dt
 		item.x += sin(item.t * 4.0) * 18.0 * dt
 	items = items.filter(func(item: Dictionary) -> bool: return item.y < Config.H + 36.0)
+
+
+func _check_rock_collisions() -> void:
+	if stage_hazards.is_empty():
+		return
+	for hazard in stage_hazards:
+		if hazard.kind != "rock":
+			continue
+		for bullet in projectiles.bullets:
+			if Vector2(bullet.x, bullet.y).distance_to(Vector2(hazard.x, hazard.y)) >= float(hazard.r) + bullet.r:
+				continue
+			bullet.y = -999.0 if not bullet.enemy else Config.H + 999.0
+			if not bullet.enemy:
+				hazard.hp -= bullet.power
+				score += 20
+				explosions.append({"x": bullet.x, "y": bullet.y, "t": 0.0, "big": false})
+		if player.invuln <= 0.0 and Vector2(player.x, player.y).distance_to(Vector2(hazard.x, hazard.y)) < float(hazard.r) + 24.0:
+			_hurt()
+		if hazard.hp <= 0:
+			score += 320
+			explosions.append({"x": hazard.x, "y": hazard.y, "t": 0.0, "big": true})
+			if randf() < 0.34 + item_drop_bonus:
+				items.append({"kind": "shield", "x": hazard.x, "y": hazard.y, "vy": 78.0, "t": 0.0})
+	stage_hazards = stage_hazards.filter(func(hazard: Dictionary) -> bool: return hazard.kind != "rock" or hazard.hp > 0)
+	projectiles.bullets = projectiles.bullets.filter(func(bullet: Dictionary) -> bool: return bullet.y > -900.0 and bullet.y < Config.H + 900.0)
+
+
+func _update_plasma_reflectors() -> void:
+	for bullet in projectiles.bullets:
+		if not bullet.enemy:
+			continue
+		if bullet.get("reflected", false):
+			continue
+		if bullet.x < 42.0 or bullet.x > Config.W - 42.0:
+			bullet.x = clampf(bullet.x, 42.0, Config.W - 42.0)
+			bullet.vx = -bullet.vx + (player.x - bullet.x) * 0.08
+			bullet.vy += 24.0
+			bullet.reflected = true
+			bullet.color = Color("#fff06a")
+			explosions.append({"x": bullet.x, "y": bullet.y, "t": 0.0, "big": false})
+
+
+func _convert_overdrive_bullets(dt: float) -> void:
+	var kept: Array[Dictionary] = []
+	var converted := 0
+	var radius: float = 114.0 + player.overdrive_duration_bonus * 8.0
+	for bullet in projectiles.bullets:
+		if bullet.enemy and Vector2(bullet.x, bullet.y).distance_to(Vector2(player.x, player.y)) < radius:
+			converted += 1
+			score_crystals.append({"x": bullet.x, "y": bullet.y, "vx": randf_range(-38.0, 38.0), "vy": -90.0 - randf() * 40.0, "value": 95, "t": 0.0})
+		else:
+			kept.append(bullet)
+	if converted > 0:
+		projectiles.bullets = kept
+		score += converted * 35
+		player.overdrive_timer = minf(player.get_overdrive_duration() + 2.0, player.overdrive_timer + converted * 0.035 * dt * 60.0)
+		audio_manager.play_sfx("graze")
+
+
+func _update_score_crystals(dt: float) -> void:
+	for crystal in score_crystals:
+		crystal.t += dt
+		var to_player := Vector2(player.x - crystal.x, player.y - crystal.y)
+		if to_player.length() < 220.0:
+			var pull := to_player.normalized() * 260.0 * dt
+			crystal.vx += pull.x
+			crystal.vy += pull.y
+		crystal.x += crystal.vx * dt
+		crystal.y += crystal.vy * dt
+	for crystal in score_crystals:
+		if Vector2(crystal.x, crystal.y).distance_to(Vector2(player.x, player.y)) < 42.0:
+			score += int(crystal.value)
+			crystal.y = Config.H + 999.0
+	score_crystals = score_crystals.filter(func(crystal: Dictionary) -> bool: return crystal.y < Config.H + 100.0 and crystal.t < 6.0)
+
+
+func _update_ai_rival(dt: float) -> void:
+	ai_rival_timer += dt
+	if ai_rival_timer >= 0.5:
+		ai_rival_timer = 0.0
+		var pressure := 90 + int(stage) * 18
+		if player.combo >= 4:
+			pressure += 20
+		ai_rival_score += pressure
+	_refresh_ai_danger_lanes()
+
+
+func _refresh_ai_danger_lanes() -> void:
+	ai_danger_lanes.clear()
+	if control_mode != ControlMode.AI and state == GameState.PLAYING:
+		return
+	for lane in [102.0, 242.0, 382.0, 522.0, 662.0, 802.0]:
+		var danger := 0.0
+		for bullet in projectiles.bullets:
+			if bullet.enemy and absf(bullet.x - lane) < bullet.r + 42.0 and bullet.y > Config.HUD:
+				danger += 1.0
+		if danger > 0.0:
+			ai_danger_lanes.append({"x": lane, "danger": minf(1.0, danger / 3.0)})
 
 
 func _maybe_drop_item(enemy: Dictionary, from_bomb: bool) -> void:
@@ -497,8 +655,12 @@ func _check_collisions() -> void:
 					var multiplier: float = player.register_kill()
 					var close_bonus := maxf(0.0, 1.0 - Vector2(enemy.x, enemy.y).distance_to(Vector2(player.x, player.y)) / 180.0)
 					player.add_resonance(3.0 + minf(10.0, float(player.combo)) * 0.55 + close_bonus * 6.0)
+					if player.close_kill_extend and player.is_overdrive_active() and close_bonus > 0.25:
+						player.overdrive_timer = minf(player.get_overdrive_duration() + 2.0, player.overdrive_timer + 0.18 + close_bonus * 0.18)
 					if player.is_overdrive_active():
 						multiplier *= 1.75
+					if close_bonus > 0.45:
+						multiplier *= 1.12
 					score += int(enemy.score * multiplier)
 					explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer", "commander"]})
 					if enemy.kind == "commander":
@@ -511,9 +673,10 @@ func _check_collisions() -> void:
 
 		if boss_controller.is_alive() and _boss_hit_test(Vector2(bullet.x, bullet.y), bullet.r):
 			bullet.y = -999.0
-			boss_controller.boss.hp -= bullet.power
+			var weak_bonus := _damage_boss_part(Vector2(bullet.x, bullet.y), bullet.power)
+			boss_controller.boss.hp -= bullet.power + weak_bonus
 			player.add_resonance(1.4 + float(bullet.power) * 0.65)
-			var boss_score: int = 8 + min(player.combo, 20)
+			var boss_score: int = 8 + min(player.combo, 20) + weak_bonus * 14
 			score += int(boss_score * (2.0 if player.is_overdrive_active() else 1.0))
 			explosions.append({"x": bullet.x, "y": bullet.y + 20.0, "t": 0.0, "big": false})
 			audio_manager.play_sfx("hit")
@@ -533,6 +696,10 @@ func _check_collisions() -> void:
 				bullet.grazed = true
 				player.add_resonance(7.5)
 				score += 25 if player.is_overdrive_active() else 5
+				if player.graze_chain_bonus:
+					player.combo = maxi(1, player.combo + 1)
+					player.combo_timer = maxf(player.combo_timer, 1.25)
+					score += 18 + player.combo * 2
 				audio_manager.play_sfx("graze")
 		var hit_bullet: bool = projectiles.bullets.any(func(bullet: Dictionary) -> bool: return bullet.enemy and _distance(bullet, player_pos) < 27.0 + bullet.r)
 		var hit_enemy: bool = swarm.enemies.any(func(enemy: Dictionary) -> bool: return _distance(enemy, player_pos) < enemy.size + 22.0)
@@ -551,9 +718,12 @@ func _check_collisions() -> void:
 
 func _hurt() -> void:
 	_stage_damage += 1
+	var shield_absorb: bool = player.shield > 0
 	var dead: bool = player.hurt()
-	projectiles.clear_enemy_bullets()
 	explosions.append({"x": player.x, "y": player.y, "t": 0.0, "big": true})
+	if shield_absorb and player.shield_retaliate:
+		_trigger_shield_burst()
+	projectiles.clear_enemy_bullets()
 	_add_shake(6.0)
 	_add_flash(0.55, 0.05)
 	hitstop = 0.055
@@ -565,6 +735,23 @@ func _hurt() -> void:
 		audio_manager.set_music_overdriven(false)
 		audio_manager.set_music_ducked(false)
 		audio_manager.play_music("game_over")
+
+
+func _trigger_shield_burst() -> void:
+	var burst_radius := 185.0
+	for enemy in swarm.enemies:
+		if Vector2(enemy.x, enemy.y).distance_to(Vector2(player.x, player.y)) < burst_radius:
+			enemy.hp -= 1
+			explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": false})
+	var kept: Array[Dictionary] = []
+	for bullet in projectiles.bullets:
+		if bullet.enemy and Vector2(bullet.x, bullet.y).distance_to(Vector2(player.x, player.y)) < burst_radius:
+			score_crystals.append({"x": bullet.x, "y": bullet.y, "vx": 0.0, "vy": -120.0, "value": 70, "t": 0.0})
+		else:
+			kept.append(bullet)
+	projectiles.bullets = kept
+	score += 300
+	_add_flash(0.34, 0.025)
 
 
 func _check_stage_end() -> void:
@@ -610,6 +797,7 @@ func _record_stage_result() -> void:
 		"bombs": _stage_bombs_used,
 		"time": clear_time,
 		"rank": _rank_for_stage(stage, score_gain, _stage_max_combo, _stage_damage, _stage_bombs_used, clear_time),
+		"tip": _tip_for_stage(score_gain, _stage_max_combo, _stage_damage, _stage_bombs_used, clear_time),
 	}
 	if stage_results.size() > stage and stage_results[stage].stage == stage:
 		stage_results[stage] = result
@@ -640,6 +828,20 @@ func _rank_for_stage(stage_index: int, score_gain: int, max_chain: int, damage: 
 	if points >= 62.0:
 		return "B"
 	return "C"
+
+
+func _tip_for_stage(score_gain: int, max_chain: int, damage: int, bombs_used: int, clear_time: float) -> String:
+	if damage > 0:
+		return "NEXT: HOLD SAFE LANES"
+	if max_chain < 10:
+		return "NEXT: KEEP CHAIN ALIVE"
+	if bombs_used > 1:
+		return "NEXT: SAVE BOMBS"
+	if clear_time > 55.0:
+		return "NEXT: PUSH CLOSER"
+	if score_gain < 8000:
+		return "NEXT: GRAZE FOR RESONANCE"
+	return "NEXT: AIM FOR SSS"
 
 
 func _handle_commander_defeat(enemy: Dictionary) -> void:
@@ -690,6 +892,8 @@ func _draw() -> void:
 	_draw_background()
 	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration())
 	_draw_control_mode_badge()
+	_draw_ai_rival()
+	_draw_ai_danger_lanes()
 	_draw_playfield()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if flash > 0.0:
@@ -718,6 +922,8 @@ func _draw_background() -> void:
 
 
 func _draw_playfield() -> void:
+	for hazard in stage_hazards:
+		_draw_stage_hazard(hazard)
 	for enemy in swarm.enemies:
 		_draw_enemy(enemy)
 	if boss_controller.is_alive():
@@ -728,6 +934,8 @@ func _draw_playfield() -> void:
 		_draw_bomb_wave(wave)
 	for item in items:
 		_draw_item(item)
+	for crystal in score_crystals:
+		_draw_score_crystal(crystal)
 	_draw_player()
 	for explosion in explosions:
 		_draw_explosion(explosion)
@@ -800,6 +1008,33 @@ func _draw_boss() -> void:
 		draw_line(Vector2(boss_controller.boss.x, boss_controller.boss.y + 140.0), Vector2(player.x, player.y), Color(1, 0.18, 0.12, 0.55), 3.0)
 	var tint := Color(1, 0.86, 0.86, 1) if boss_controller.boss.phase >= 2 else Color.WHITE
 	_draw_sprite("boss", boss_controller.boss.x, boss_controller.boss.y, 390, 390, tint)
+	if boss_controller.boss.has("parts"):
+		for part in boss_controller.boss.parts:
+			var part_pos: Vector2 = Vector2(boss_controller.boss.x, boss_controller.boss.y) + part.offset
+			var part_color: Color = Color("#fff06a") if part.alive else Color(0.35, 0.35, 0.38, 0.58)
+			draw_arc(part_pos, 34.0, 0.0, TAU, 32, Color(part_color, 0.62), 3.0)
+			if part.alive:
+				draw_circle(part_pos, 8.0, Color(part_color, 0.86))
+
+
+func _draw_stage_hazard(hazard: Dictionary) -> void:
+	if hazard.kind == "rock":
+		var center := Vector2(hazard.x, hazard.y)
+		var radius: float = hazard.r
+		draw_circle(center, radius + 8.0, Color(1.0, 0.78, 0.32, 0.12))
+		draw_circle(center, radius, Color("#6e5266"))
+		draw_arc(center, radius + 2.0, -0.4, PI * 1.25, 18, Color("#ffe36e"), 2.0)
+	elif str(hazard.kind).begins_with("plasma"):
+		var x: float = hazard.x
+		draw_rect(Rect2(x - 10.0, Config.HUD, 20.0, Config.PLAY_H), Color(0.52, 0.9, 1.0, 0.1))
+		draw_line(Vector2(x, Config.HUD), Vector2(x, Config.H), Color("#72eaff"), 3.0)
+
+
+func _draw_score_crystal(crystal: Dictionary) -> void:
+	var center := Vector2(crystal.x, crystal.y)
+	var pulse := 0.5 + sin(crystal.t * 14.0) * 0.5
+	draw_circle(center, 14.0 + pulse * 4.0, Color(1.0, 0.94, 0.36, 0.18))
+	draw_rect(Rect2(center.x - 6.0, center.y - 6.0, 12.0, 12.0), Color("#fff06a"))
 
 
 func _draw_bullet(bullet: Dictionary) -> void:
@@ -876,7 +1111,7 @@ func _draw_overlay() -> void:
 		draw_texture_rect_region(ui_texture, Rect2(130, Config.HUD + 92, 700, 214), ui_regions.logo)
 		_draw_title_mode_select(Config.HUD + 330.0)
 		hud.draw_centered(self, font, sub, Config.HUD + 392, 22, Color("#ff7af0"))
-		hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 440, 17, Color(0.89, 0.98, 1.0, 0.82))
+		hud.draw_centered(self, font, "STAGE GIMMICKS / BUILD CHOICES / OVERDRIVE CONVERT", Config.HUD + 440, 17, Color(0.89, 0.98, 1.0, 0.82))
 	elif state == GameState.VICTORY and ui_texture:
 		draw_texture_rect_region(ui_texture, Rect2(146, Config.HUD + 72, 668, 210), ui_regions.ending)
 		_draw_arcade_title(title, Config.HUD + 304.0, 44, Color("#dffcff"))
@@ -889,7 +1124,7 @@ func _draw_overlay() -> void:
 		if state == GameState.GAME_OVER and not stage_results.is_empty():
 			_draw_results_table(Config.HUD + 334.0)
 		else:
-			hud.draw_centered(self, font, "5 STAGES / CHAIN SCORE / ITEMS / BOSS PHASES", Config.HUD + 340, 17, Color(0.89, 0.98, 1.0, 0.82))
+			hud.draw_centered(self, font, "STAGE GIMMICKS / BUILD CHOICES / OVERDRIVE CONVERT", Config.HUD + 340, 17, Color(0.89, 0.98, 1.0, 0.82))
 
 
 func _draw_upgrade_overlay() -> void:
@@ -942,6 +1177,9 @@ func _draw_results_table(y: float) -> void:
 		draw_string(font, Vector2(cols[3], row_y), str(result.damage), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ff9aa8"))
 		draw_string(font, Vector2(cols[4], row_y), str(result.bombs), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ff7af0"))
 		draw_string(font, Vector2(cols[5], row_y), str(result.rank), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, rank_color)
+	if not stage_results.is_empty():
+		var last_result: Dictionary = stage_results[stage_results.size() - 1]
+		draw_string(font, Vector2(x, y + row_h * 6.0 + 24.0), str(last_result.get("tip", "NEXT: AIM FOR SSS")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#fff06a"))
 
 
 func _rank_color(rank: String) -> Color:
@@ -965,6 +1203,22 @@ func _draw_control_mode_badge() -> void:
 	draw_rect(Rect2(x - 9.0, y - 15.0, text_size.x + 18.0, 20.0), Color(0.0, 0.0, 0.0, 0.34))
 	draw_rect(Rect2(x - 9.0, y - 15.0, text_size.x + 18.0, 20.0), Color(color, 0.12), false, 1.0)
 	draw_string(font, Vector2(x, y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+
+
+func _draw_ai_rival() -> void:
+	if state != GameState.PLAYING:
+		return
+	var label := "AI RIVAL " + str(ai_rival_score).pad_zeros(7)
+	var color := Color("#fff06a") if ai_rival_score > score else Color(0.89, 0.98, 1.0, 0.62)
+	draw_string(font, Vector2(662.0, 64.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
+
+
+func _draw_ai_danger_lanes() -> void:
+	if control_mode != ControlMode.AI or state != GameState.PLAYING:
+		return
+	for lane in ai_danger_lanes:
+		var alpha: float = 0.08 + float(lane.danger) * 0.18
+		draw_rect(Rect2(float(lane.x) - 34.0, Config.HUD, 68.0, Config.PLAY_H), Color(1.0, 0.28, 0.28, alpha))
 
 
 func _draw_title_mode_select(y: float) -> void:
@@ -1028,6 +1282,30 @@ func _boss_hit_test(point: Vector2, radius: float) -> bool:
 		if point.distance_to(Vector2(b.x, b.y) + zone.offset) <= zone.r + radius:
 			return true
 	return false
+
+
+func _damage_boss_part(point: Vector2, power: int) -> int:
+	var b: Dictionary = boss_controller.boss
+	if b.is_empty() or not b.has("parts"):
+		return 0
+	for part in b.parts:
+		if not part.alive:
+			continue
+		var part_pos: Vector2 = Vector2(b.x, b.y) + part.offset
+		if point.distance_to(part_pos) > 42.0:
+			continue
+		part.hp -= power
+		if part.hp <= 0:
+			part.alive = false
+			score += 1200
+			player.add_resonance(18.0)
+			_add_shake(3.8)
+			_add_flash(0.34, 0.02)
+			for i in range(4):
+				explosions.append({"x": part_pos.x + randf_range(-24.0, 24.0), "y": part_pos.y + randf_range(-24.0, 24.0), "t": -float(i) * 0.025, "big": true})
+			return 8
+		return 2
+	return 0
 
 
 func _load_sprite_texture() -> Texture2D:

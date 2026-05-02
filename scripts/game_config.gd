@@ -31,10 +31,11 @@ const ENEMY_STATS := {
 
 const UPGRADE_POOL := [
 	{"id": "rapid", "name": "RAPID ARRAY", "desc": "SHOT RATE UP"},
+	{"id": "spread", "name": "WIDE ARRAY", "desc": "SIDE SHOTS"},
 	{"id": "overdrive", "name": "CORE EXTENDER", "desc": "OVERDRIVE TIME UP"},
-	{"id": "resonance", "name": "GRAZE AMP", "desc": "RESONANCE GAIN UP"},
-	{"id": "bomb", "name": "BOMB LENS", "desc": "BOMB WIDTH UP"},
-	{"id": "shield", "name": "SHIELD CELL", "desc": "SHIELD MAX UP"},
+	{"id": "graze_core", "name": "GRAZE CORE", "desc": "GRAZE BUILDS CHAIN"},
+	{"id": "bomb_refund", "name": "BOMB LOOP", "desc": "BOMB KILLS CAN REFUND"},
+	{"id": "shield_burst", "name": "SHIELD BURST", "desc": "SHIELD HIT COUNTERS"},
 	{"id": "drop", "name": "SALVAGE LINK", "desc": "ITEM DROP UP"},
 ]
 
