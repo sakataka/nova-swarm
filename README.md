@@ -45,6 +45,9 @@ public/assets/spritesheet.png
 public/assets/backgrounds.png
 public/assets/ui_atlas.png
 public/assets/rock_obstacle.png
+public/assets/projectile_atlas.png
+public/assets/final_boss.png
+public/assets/boss_weakpoints.png
 export_presets.cfg
 ```
 
@@ -74,6 +77,9 @@ export_presets.cfg
 - `public/assets/backgrounds.png`: 5ステージ分の宇宙背景アトラス
 - `public/assets/ui_atlas.png`: タイトルロゴ、アイテムアイコン、ステージバナー、エンディング絵のUIアトラス
 - `public/assets/rock_obstacle.png`: `ROCK BELT` の岩障害物用スプライト。赤い鉱脈背景に馴染む生成画像を透明化して使用
+- `public/assets/projectile_atlas.png`: 自弾、Overdrive弾、敵弾、ボス弾用の生成スプライトアトラス
+- `public/assets/final_boss.png`: 5面ボス用の高解像度生成スプライト
+- `public/assets/boss_weakpoints.png`: ボス部位の生存/破壊済み表示用スプライトアトラス
 - `public/assets/audio/music/*.wav`: タイトル、通常戦、後半戦、ボス、勝利、ゲームオーバー用のネオンSTG系BGMループ
 
 ## ゲーム品質改善
@@ -83,6 +89,7 @@ export_presets.cfg
 - 敵弾のかすり、連続撃破、ボスヒットで溜まるResonanceゲージと、満タン時に発動できるOverdriveを追加しています。
 - Overdrive中に敵弾をスコア結晶へ変換し、攻撃的な回避に得点上の価値を持たせています。
 - ステージ専用ギミック、ビルド分岐アップグレード、ボス部位破壊、リザルト改善ヒントを追加しています。
+- 自弾・敵弾・5面ボス・ボス弱点表示を生成スプライトに差し替え、背景や岩障害物と同じ赤い鉱脈系の世界観に寄せています。
 - AI Pilotの可視化としてAI Rivalスコアを追加しています。
 - 爆発、被弾、ボム、ステージ開始、ボス攻撃に画面揺れ、フラッシュ、ヒットストップ、予兆を追加しています。
 - `armor` は2HPになり、敵ごとの役割差が出るようにしています。

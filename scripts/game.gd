@@ -59,6 +59,9 @@ var ui_texture: Texture2D
 var commander_texture: Texture2D
 var commander_fx_texture: Texture2D
 var rock_obstacle_texture: Texture2D
+var projectile_texture: Texture2D
+var final_boss_texture: Texture2D
+var boss_weakpoint_texture: Texture2D
 var font: Font
 var overdrive_aura: CPUParticles2D
 var overdrive_burst: CPUParticles2D
@@ -85,6 +88,9 @@ func _ready() -> void:
 	commander_texture = _load_imported_or_png_texture("res://public/assets/commander.png")
 	commander_fx_texture = _load_imported_or_png_texture("res://public/assets/commander_fx.png")
 	rock_obstacle_texture = _load_imported_or_png_texture("res://public/assets/rock_obstacle.png")
+	projectile_texture = _load_imported_or_png_texture("res://public/assets/projectile_atlas.png")
+	final_boss_texture = _load_imported_or_png_texture("res://public/assets/final_boss.png")
+	boss_weakpoint_texture = _load_imported_or_png_texture("res://public/assets/boss_weakpoints.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
 	_setup_overdrive_particles()
@@ -993,14 +999,44 @@ func _draw_boss() -> void:
 	if boss_controller.boss.tell > 0.0:
 		draw_line(Vector2(boss_controller.boss.x, boss_controller.boss.y + 140.0), Vector2(player.x, player.y), Color(1, 0.18, 0.12, 0.55), 3.0)
 	var tint := Color(1, 0.86, 0.86, 1) if boss_controller.boss.phase >= 2 else Color.WHITE
-	_draw_sprite("boss", boss_controller.boss.x, boss_controller.boss.y, 390, 390, tint)
+	if final_boss_texture:
+		draw_texture_rect(final_boss_texture, Rect2(boss_controller.boss.x - 205.0, boss_controller.boss.y - 205.0, 410.0, 410.0), false, tint)
+	else:
+		_draw_sprite("boss", boss_controller.boss.x, boss_controller.boss.y, 390, 390, tint)
 	if boss_controller.boss.has("parts"):
 		for part in boss_controller.boss.parts:
 			var part_pos: Vector2 = Vector2(boss_controller.boss.x, boss_controller.boss.y) + part.offset
-			var part_color: Color = Color("#fff06a") if part.alive else Color(0.35, 0.35, 0.38, 0.58)
-			draw_arc(part_pos, 34.0, 0.0, TAU, 32, Color(part_color, 0.62), 3.0)
-			if part.alive:
-				draw_circle(part_pos, 8.0, Color(part_color, 0.86))
+			_draw_boss_weakpoint(part, part_pos)
+
+
+func _draw_boss_weakpoint(part: Dictionary, part_pos: Vector2) -> void:
+	if boss_weakpoint_texture:
+		var region := _boss_weakpoint_region(str(part.id), bool(part.alive))
+		var size := 76.0 if part.id == "core" else 58.0
+		var tint := Color.WHITE
+		if part.alive:
+			var pulse := 0.82 + sin(stage_timer * 8.0 + part_pos.x * 0.03) * 0.18
+			tint = Color(1.0, 0.82 + pulse * 0.18, 0.58 + pulse * 0.16, 0.92)
+		else:
+			tint = Color(0.62, 0.58, 0.58, 0.78)
+		draw_texture_rect_region(boss_weakpoint_texture, Rect2(part_pos.x - size * 0.5, part_pos.y - size * 0.5, size, size), region, tint)
+		return
+	var part_color: Color = Color("#fff06a") if part.alive else Color(0.35, 0.35, 0.38, 0.58)
+	draw_arc(part_pos, 34.0, 0.0, TAU, 32, Color(part_color, 0.62), 3.0)
+	if part.alive:
+		draw_circle(part_pos, 8.0, Color(part_color, 0.86))
+
+
+func _boss_weakpoint_region(part_id: String, alive: bool) -> Rect2:
+	var cell_w := 1254.0 / 6.0
+	var index := 0
+	if part_id == "left":
+		index = 0 if alive else 1
+	elif part_id == "right":
+		index = 2 if alive else 3
+	else:
+		index = 4 if alive else 5
+	return Rect2(cell_w * float(index), 0.0, cell_w, 1254.0)
 
 
 func _draw_stage_hazard(hazard: Dictionary) -> void:
@@ -1042,10 +1078,44 @@ func _draw_score_crystal(crystal: Dictionary) -> void:
 
 
 func _draw_bullet(bullet: Dictionary) -> void:
+	if projectile_texture:
+		var visual := str(bullet.get("sprite", "enemy" if bullet.enemy else "player"))
+		var region := _projectile_region(visual)
+		var width := 34.0
+		var height := 74.0
+		if visual == "overdrive":
+			width = 48.0
+			height = 98.0
+		elif visual == "boss":
+			width = 48.0
+			height = 92.0
+		elif visual == "beam":
+			width = 58.0
+			height = 118.0
+		elif visual == "enemy":
+			width = 34.0
+			height = 68.0
+		var tint := Color.WHITE
+		if bullet.enemy and visual != "beam":
+			tint = Color(1.0, 0.78, 0.98, 0.96)
+		draw_texture_rect_region(projectile_texture, Rect2(bullet.x - width * 0.5, bullet.y - height * 0.5, width, height), region, tint)
+		return
 	var rx: float = bullet.r
 	var ry: float = bullet.r * (1.6 if bullet.enemy else 2.4)
 	draw_circle(Vector2(bullet.x, bullet.y), maxf(rx, ry), Color(bullet.color, 0.16))
 	draw_ellipse(Vector2(bullet.x, bullet.y), rx, ry, bullet.color)
+
+
+func _projectile_region(visual: String) -> Rect2:
+	var cell_w := 1254.0 / 4.0
+	var index := 0
+	if visual == "overdrive":
+		index = 1
+	elif visual == "enemy":
+		index = 2
+	elif visual == "boss" or visual == "beam":
+		index = 3
+	return Rect2(cell_w * float(index), 0.0, cell_w, 1254.0)
 
 
 func _draw_explosion(explosion: Dictionary) -> void:
