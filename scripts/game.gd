@@ -274,6 +274,7 @@ func _setup_stage_gimmicks() -> void:
 				"r": 28.0 + float(i % 2) * 9.0,
 				"hp": 3 + i % 2,
 				"t": float(i) * 0.7,
+				"seed": i * 37 + 11,
 			})
 	elif stage == 3:
 		stage_hazards.append({"kind": "plasma_left", "x": 34.0, "t": 0.0})
@@ -1021,9 +1022,22 @@ func _draw_stage_hazard(hazard: Dictionary) -> void:
 	if hazard.kind == "rock":
 		var center := Vector2(hazard.x, hazard.y)
 		var radius: float = hazard.r
-		draw_circle(center, radius + 8.0, Color(1.0, 0.78, 0.32, 0.12))
-		draw_circle(center, radius, Color("#6e5266"))
-		draw_arc(center, radius + 2.0, -0.4, PI * 1.25, 18, Color("#ffe36e"), 2.0)
+		var points := PackedVector2Array()
+		var seed_value: int = int(hazard.get("seed", 0))
+		for i in range(11):
+			var angle := -PI * 0.5 + float(i) / 11.0 * TAU
+			var chip := 0.78 + float((seed_value + i * 19) % 9) * 0.035
+			points.append(center + Vector2(cos(angle), sin(angle)) * radius * chip)
+		draw_colored_polygon(points, Color("#493f54"))
+		draw_polyline(points, Color("#d7b56f"), 3.0, true)
+		var inner := PackedVector2Array()
+		for i in range(points.size()):
+			inner.append(center.lerp(points[i], 0.52))
+		draw_colored_polygon(inner, Color(0.78, 0.66, 0.45, 0.32))
+		var crack_a := center + Vector2(-radius * 0.36, -radius * 0.18)
+		var crack_b := center + Vector2(radius * 0.18, radius * 0.08)
+		var crack_c := center + Vector2(radius * 0.42, -radius * 0.2)
+		draw_polyline(PackedVector2Array([crack_a, crack_b, crack_c]), Color(1.0, 0.88, 0.55, 0.58), 2.0)
 	elif str(hazard.kind).begins_with("plasma"):
 		var x: float = hazard.x
 		draw_rect(Rect2(x - 10.0, Config.HUD, 20.0, Config.PLAY_H), Color(0.52, 0.9, 1.0, 0.1))
@@ -1217,8 +1231,11 @@ func _draw_ai_danger_lanes() -> void:
 	if control_mode != ControlMode.AI or state != GameState.PLAYING:
 		return
 	for lane in ai_danger_lanes:
-		var alpha: float = 0.08 + float(lane.danger) * 0.18
-		draw_rect(Rect2(float(lane.x) - 34.0, Config.HUD, 68.0, Config.PLAY_H), Color(1.0, 0.28, 0.28, alpha))
+		var x: float = float(lane.x)
+		var alpha: float = 0.18 + float(lane.danger) * 0.28
+		var y := Config.H - 104.0
+		draw_line(Vector2(x - 28.0, y), Vector2(x + 28.0, y), Color(1.0, 0.72, 0.22, alpha), 3.0)
+		draw_line(Vector2(x - 18.0, y + 10.0), Vector2(x + 18.0, y + 10.0), Color(1.0, 0.32, 0.28, alpha * 0.68), 2.0)
 
 
 func _draw_title_mode_select(y: float) -> void:
