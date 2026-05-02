@@ -44,6 +44,7 @@ scripts/gameplay_test.gd
 public/assets/spritesheet.png
 public/assets/backgrounds.png
 public/assets/ui_atlas.png
+public/assets/rock_obstacle.png
 export_presets.cfg
 ```
 
@@ -65,13 +66,14 @@ export_presets.cfg
 - Resonance Overdrive中は近くの敵弾をスコア結晶に変換し、攻めながら危険を得点へ変えられます。近距離撃破もOverdrive維持に寄与します。
 - ボスは複数の破壊可能部位を持ち、部位を壊すと攻撃テンポやビーム行動に影響します。
 - リザルトにはランクに加えて次回改善ヒントを表示します。スコア、チェイン、被弾、ボム使用、クリア時間を見て改善先を出します。
-- AI Pilotは自動プレイに加えて、AI Rivalスコアと危険レーン可視化を表示し、練習・観戦時の判断材料にしています。
+- AI Pilotは自動プレイに加えて、AI Rivalスコアを表示し、練習・観戦時の比較材料にしています。
 
 ## アセット
 
 - `public/assets/spritesheet.png`: 自機、敵、弾、爆発、ボスなどの4x4固定グリッドスプライト
 - `public/assets/backgrounds.png`: 5ステージ分の宇宙背景アトラス
 - `public/assets/ui_atlas.png`: タイトルロゴ、アイテムアイコン、ステージバナー、エンディング絵のUIアトラス
+- `public/assets/rock_obstacle.png`: `ROCK BELT` の岩障害物用スプライト。赤い鉱脈背景に馴染む生成画像を透明化して使用
 - `public/assets/audio/music/*.wav`: タイトル、通常戦、後半戦、ボス、勝利、ゲームオーバー用のネオンSTG系BGMループ
 
 ## ゲーム品質改善
@@ -81,7 +83,7 @@ export_presets.cfg
 - 敵弾のかすり、連続撃破、ボスヒットで溜まるResonanceゲージと、満タン時に発動できるOverdriveを追加しています。
 - Overdrive中に敵弾をスコア結晶へ変換し、攻撃的な回避に得点上の価値を持たせています。
 - ステージ専用ギミック、ビルド分岐アップグレード、ボス部位破壊、リザルト改善ヒントを追加しています。
-- AI Pilotの可視化としてAI Rivalスコアと危険レーン表示を追加しています。
+- AI Pilotの可視化としてAI Rivalスコアを追加しています。
 - 爆発、被弾、ボム、ステージ開始、ボス攻撃に画面揺れ、フラッシュ、ヒットストップ、予兆を追加しています。
 - `armor` は2HPになり、敵ごとの役割差が出るようにしています。
 - ボスの当たり判定は矩形ではなく複数の円形ゾーンで扱い、見た目から外れた弾が消えにくいようにしています。

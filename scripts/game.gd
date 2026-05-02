@@ -51,7 +51,6 @@ var bomb_waves: Array[Dictionary] = []
 var items: Array[Dictionary] = []
 var stage_hazards: Array[Dictionary] = []
 var score_crystals: Array[Dictionary] = []
-var ai_danger_lanes: Array[Dictionary] = []
 var ai_rival_score := 0
 var ai_rival_timer := 0.0
 var sprite_texture: Texture2D
@@ -59,6 +58,7 @@ var background_texture: Texture2D
 var ui_texture: Texture2D
 var commander_texture: Texture2D
 var commander_fx_texture: Texture2D
+var rock_obstacle_texture: Texture2D
 var font: Font
 var overdrive_aura: CPUParticles2D
 var overdrive_burst: CPUParticles2D
@@ -84,6 +84,7 @@ func _ready() -> void:
 	ui_texture = _load_imported_or_png_texture("res://public/assets/ui_atlas.png")
 	commander_texture = _load_imported_or_png_texture("res://public/assets/commander.png")
 	commander_fx_texture = _load_imported_or_png_texture("res://public/assets/commander_fx.png")
+	rock_obstacle_texture = _load_imported_or_png_texture("res://public/assets/rock_obstacle.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
 	_setup_overdrive_particles()
@@ -236,7 +237,6 @@ func load_stage(index: int) -> void:
 	items.clear()
 	stage_hazards.clear()
 	score_crystals.clear()
-	ai_danger_lanes.clear()
 	swarm.clear()
 	boss_controller.clear()
 	player.start_stage(Config.W / 2.0)
@@ -607,20 +607,6 @@ func _update_ai_rival(dt: float) -> void:
 		if player.combo >= 4:
 			pressure += 20
 		ai_rival_score += pressure
-	_refresh_ai_danger_lanes()
-
-
-func _refresh_ai_danger_lanes() -> void:
-	ai_danger_lanes.clear()
-	if control_mode != ControlMode.AI and state == GameState.PLAYING:
-		return
-	for lane in [102.0, 242.0, 382.0, 522.0, 662.0, 802.0]:
-		var danger := 0.0
-		for bullet in projectiles.bullets:
-			if bullet.enemy and absf(bullet.x - lane) < bullet.r + 42.0 and bullet.y > Config.HUD:
-				danger += 1.0
-		if danger > 0.0:
-			ai_danger_lanes.append({"x": lane, "danger": minf(1.0, danger / 3.0)})
 
 
 func _maybe_drop_item(enemy: Dictionary, from_bomb: bool) -> void:
@@ -894,7 +880,6 @@ func _draw() -> void:
 	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration())
 	_draw_control_mode_badge()
 	_draw_ai_rival()
-	_draw_ai_danger_lanes()
 	_draw_playfield()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if flash > 0.0:
@@ -1022,6 +1007,11 @@ func _draw_stage_hazard(hazard: Dictionary) -> void:
 	if hazard.kind == "rock":
 		var center := Vector2(hazard.x, hazard.y)
 		var radius: float = hazard.r
+		if rock_obstacle_texture:
+			var size := radius * 2.65
+			var pulse := 0.94 + sin(stage_timer * 1.1 + float(hazard.seed)) * 0.035
+			draw_texture_rect(rock_obstacle_texture, Rect2(center.x - size * 0.5, center.y - size * 0.5, size, size), false, Color(1.0, 1.0, 1.0, pulse))
+			return
 		var points := PackedVector2Array()
 		var seed_value: int = int(hazard.get("seed", 0))
 		for i in range(11):
@@ -1225,17 +1215,6 @@ func _draw_ai_rival() -> void:
 	var label := "AI RIVAL " + str(ai_rival_score).pad_zeros(7)
 	var color := Color("#fff06a") if ai_rival_score > score else Color(0.89, 0.98, 1.0, 0.62)
 	draw_string(font, Vector2(662.0, 64.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
-
-
-func _draw_ai_danger_lanes() -> void:
-	if control_mode != ControlMode.AI or state != GameState.PLAYING:
-		return
-	for lane in ai_danger_lanes:
-		var x: float = float(lane.x)
-		var alpha: float = 0.18 + float(lane.danger) * 0.28
-		var y := Config.H - 104.0
-		draw_line(Vector2(x - 28.0, y), Vector2(x + 28.0, y), Color(1.0, 0.72, 0.22, alpha), 3.0)
-		draw_line(Vector2(x - 18.0, y + 10.0), Vector2(x + 18.0, y + 10.0), Color(1.0, 0.32, 0.28, alpha * 0.68), 2.0)
 
 
 func _draw_title_mode_select(y: float) -> void:
