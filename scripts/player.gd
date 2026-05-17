@@ -26,20 +26,25 @@ var close_kill_extend := false
 
 var _min_x := 42.0
 var _max_x := 918.0
+var _min_y := 282.0
+var _max_y := 676.0
 
 const RESONANCE_MAX := 100.0
 const OVERDRIVE_DURATION := 5.0
 
 
-func setup(start_x: float, start_y: float, min_x: float, max_x: float) -> void:
+func setup(start_x: float, start_y: float, min_x: float, max_x: float, min_y: float, max_y: float) -> void:
 	x = start_x
 	y = start_y
 	_min_x = min_x
 	_max_x = max_x
+	_min_y = min_y
+	_max_y = max_y
 
 
-func reset_run(start_x: float) -> void:
+func reset_run(start_x: float, start_y: float) -> void:
 	x = start_x
+	y = start_y
 	lives = 3
 	bombs = 3
 	shield = 0
@@ -54,8 +59,9 @@ func reset_run(start_x: float) -> void:
 	reset_upgrade_modifiers()
 
 
-func start_stage(start_x: float) -> void:
+func start_stage(start_x: float, start_y: float) -> void:
 	x = start_x
+	y = start_y
 	invuln = 1.4
 	shot_cd = 0.0
 	bomb_cd = 0.0
@@ -65,7 +71,7 @@ func start_stage(start_x: float) -> void:
 	overdrive_timer = 0.0
 
 
-func update(dt: float, move_axis: float) -> void:
+func update(dt: float, move_vector: Vector2) -> void:
 	invuln = maxf(0.0, invuln - dt)
 	shot_cd = maxf(0.0, shot_cd - dt)
 	bomb_cd = maxf(0.0, bomb_cd - dt)
@@ -73,7 +79,9 @@ func update(dt: float, move_axis: float) -> void:
 	overdrive_timer = maxf(0.0, overdrive_timer - dt)
 	if combo_timer <= 0.0:
 		combo = 0
-	x = clampf(x + move_axis * 430.0 * dt, _min_x, _max_x)
+	var input := move_vector.limit_length(1.0)
+	x = clampf(x + input.x * 430.0 * dt, _min_x, _max_x)
+	y = clampf(y + input.y * 360.0 * dt, _min_y, _max_y)
 
 
 func can_shoot() -> bool:

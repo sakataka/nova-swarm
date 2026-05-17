@@ -6,6 +6,8 @@ const H := 720.0
 const HUD := 76.0
 const PLAY_H := H - HUD
 const PLAYER_Y := H - 58.0
+const PLAYER_MIN_Y := HUD + 206.0
+const PLAYER_MAX_Y := H - 44.0
 
 const SPRITE_SHEET_SIZE := 1254.0
 const SPRITE_GRID := 4.0

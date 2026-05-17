@@ -2,13 +2,13 @@ extends Node
 class_name NovaAudioManager
 
 const MUSIC_BANK_LABEL := "nova_swarm"
-const MUSIC_VOLUME_DB := -14.0
-const MUSIC_DUCK_DB := -24.0
-const MUSIC_OVERDRIVE_DB := -10.0
+const MUSIC_VOLUME_DB := -18.0
+const MUSIC_DUCK_DB := -28.0
+const MUSIC_OVERDRIVE_DB := -15.0
 const MUSIC_FADE_TIME := 1.25
 const OVERDRIVE_STEM_NAME := "overdrive"
 const OVERDRIVE_STEM_FADE_TIME := 0.38
-const OVERDRIVE_FALLBACK_VOLUME_DB := -15.0
+const OVERDRIVE_FALLBACK_VOLUME_DB := -22.0
 
 const MUSIC_PATHS := {
 	"title": "res://public/assets/audio/music/title_neon_loop.wav",
@@ -20,9 +20,9 @@ const MUSIC_PATHS := {
 }
 
 const OVERDRIVE_LAYER_SETTINGS := {
-	"stage_drive": {"root": 220.0, "energy": 0.75, "volume": -7.0},
-	"stage_pressure": {"root": 277.18, "energy": 0.92, "volume": -6.0},
-	"boss_core": {"root": 164.81, "energy": 1.0, "volume": -4.5},
+	"stage_drive": {"root": 220.0, "energy": 0.75, "volume": -15.0},
+	"stage_pressure": {"root": 277.18, "energy": 0.92, "volume": -14.0},
+	"boss_core": {"root": 164.81, "energy": 1.0, "volume": -13.0},
 }
 
 var muted := false
@@ -236,7 +236,7 @@ func _try_play_resonate(fade_time: float) -> bool:
 	_resonate_ready = true
 	_stop_music_players()
 	_apply_music_volume()
-	var played: bool = _resonate_manager.call("play", MUSIC_BANK_LABEL, _pending_music_key, fade_time, true)
+	var played: bool = _resonate_manager.call("play", MUSIC_BANK_LABEL, _pending_music_key, fade_time, false)
 	if played:
 		_pending_music_key = ""
 		_sync_overdrive_layer(0.08)

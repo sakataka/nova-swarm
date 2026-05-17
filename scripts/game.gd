@@ -105,7 +105,7 @@ func _exit_tree() -> void:
 
 
 func _setup_runtime_models() -> void:
-	player.setup(Config.W / 2.0, Config.PLAYER_Y, 42.0, Config.W - 42.0)
+	player.setup(Config.W / 2.0, Config.PLAYER_Y, 42.0, Config.W - 42.0, Config.PLAYER_MIN_Y, Config.PLAYER_MAX_Y)
 	projectiles.setup(Config.W, Config.H, Config.HUD)
 	swarm.setup(Config.W, Config.HUD)
 	boss_controller.setup(Config.W, Config.HUD)
@@ -183,7 +183,9 @@ func _update_feedback(dt: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if state == GameState.TITLE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
+	if _handle_title_pointer_input(event):
+		get_viewport().set_input_as_handled()
+	elif state == GameState.TITLE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
 		_toggle_selected_control_mode()
 		get_viewport().set_input_as_handled()
 	elif state == GameState.UPGRADE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
@@ -211,6 +213,28 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+func _handle_title_pointer_input(event: InputEvent) -> bool:
+	if state != GameState.TITLE:
+		return false
+	if not (event is InputEventMouseButton):
+		return false
+	var mouse_event := event as InputEventMouseButton
+	if not mouse_event.pressed or mouse_event.button_index != MOUSE_BUTTON_LEFT:
+		return false
+	return _select_title_mode_at(mouse_event.position)
+
+
+func _select_title_mode_at(position: Vector2) -> bool:
+	var hitboxes := _title_mode_hitboxes(Config.HUD + 330.0)
+	if Rect2(hitboxes.manual).has_point(position):
+		selected_control_mode = ControlMode.MANUAL
+		return true
+	if Rect2(hitboxes.ai).has_point(position):
+		selected_control_mode = ControlMode.AI
+		return true
+	return false
+
+
 func reset() -> void:
 	stage = 0
 	score = 0
@@ -224,7 +248,7 @@ func reset() -> void:
 	ai_rival_score = 0
 	ai_rival_timer = 0.0
 	control_mode = selected_control_mode
-	player.reset_run(Config.W / 2.0)
+	player.reset_run(Config.W / 2.0, Config.PLAYER_Y)
 	state = GameState.PLAYING
 	audio_manager.set_music_overdriven(false)
 	audio_manager.set_music_ducked(false)
@@ -245,7 +269,7 @@ func load_stage(index: int) -> void:
 	score_crystals.clear()
 	swarm.clear()
 	boss_controller.clear()
-	player.start_stage(Config.W / 2.0)
+	player.start_stage(Config.W / 2.0, Config.PLAYER_Y)
 	_start_stage_metrics()
 	_recalculate_difficulty()
 	flash = maxf(flash, 0.18)
@@ -306,7 +330,7 @@ func _update_stage_gimmicks(dt: float) -> void:
 func _update_game(dt: float) -> void:
 	stage_timer += dt
 	var command := _read_player_command()
-	player.update(dt, command["move_axis"])
+	player.update(dt, command["move_vector"])
 
 	if command["overdrive"] and player.can_overdrive():
 		_start_overdrive()
@@ -349,6 +373,7 @@ func _read_player_command() -> Dictionary:
 		return ai_pilot.get_command(player, swarm.enemies, boss_controller.boss, projectiles.bullets, items)
 	return {
 		"move_axis": Input.get_axis("move_left", "move_right"),
+		"move_vector": Input.get_vector("move_left", "move_right", "move_up", "move_down"),
 		"shoot": Input.is_action_pressed("shoot"),
 		"bomb": Input.is_action_pressed("bomb"),
 		"overdrive": Input.is_action_just_pressed("overdrive"),
@@ -1348,14 +1373,44 @@ func _draw_title_mode_select(y: float) -> void:
 	var ai_color := Color("#fff06a") if selected_control_mode == ControlMode.AI else Color(0.89, 0.98, 1.0, 0.56)
 	var manual_text := "< " + manual + " >" if selected_control_mode == ControlMode.MANUAL else manual
 	var ai_text := "< " + ai + " >" if selected_control_mode == ControlMode.AI else ai
+	var positions := _title_mode_text_positions(y, manual_text, ai_text)
+	var hitboxes := _title_mode_hitboxes(y)
+	_draw_title_mode_button(Rect2(hitboxes.manual), selected_control_mode == ControlMode.MANUAL, manual_color)
+	_draw_title_mode_button(Rect2(hitboxes.ai), selected_control_mode == ControlMode.AI, ai_color)
+	draw_string(font, positions.manual, manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, manual_color)
+	draw_string(font, positions.ai, ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ai_color)
+	hud.draw_centered(self, font, "CLICK OR LEFT / RIGHT SELECT", y + 46.0, 14, Color(0.89, 0.98, 1.0, 0.66))
+
+
+func _draw_title_mode_button(rect: Rect2, selected: bool, color: Color) -> void:
+	draw_rect(rect, Color(0.02, 0.06, 0.12, 0.44))
+	draw_rect(rect, Color(color, 0.42 if selected else 0.18), false, 2.0)
+	if selected:
+		draw_rect(rect.grow(-4.0), Color(color, 0.12))
+
+
+func _title_mode_hitboxes(y: float) -> Dictionary:
+	var manual_text := "< MANUAL >" if selected_control_mode == ControlMode.MANUAL else "MANUAL"
+	var ai_text := "< AI PILOT >" if selected_control_mode == ControlMode.AI else "AI PILOT"
+	var positions := _title_mode_text_positions(y, manual_text, ai_text)
+	var manual_size := font.get_string_size(manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
+	var ai_size := font.get_string_size(ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
+	return {
+		"manual": Rect2(positions.manual.x - 18.0, y - 28.0, manual_size.x + 36.0, 42.0),
+		"ai": Rect2(positions.ai.x - 18.0, y - 28.0, ai_size.x + 36.0, 42.0),
+	}
+
+
+func _title_mode_text_positions(y: float, manual_text: String, ai_text: String) -> Dictionary:
 	var gap := 58.0
 	var manual_size := font.get_string_size(manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
 	var ai_size := font.get_string_size(ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
 	var total_width := manual_size.x + gap + ai_size.x
 	var start_x := (Config.W - total_width) / 2.0
-	draw_string(font, Vector2(start_x, y), manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, manual_color)
-	draw_string(font, Vector2(start_x + manual_size.x + gap, y), ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ai_color)
-	hud.draw_centered(self, font, "LEFT / RIGHT SELECT", y + 36.0, 14, Color(0.89, 0.98, 1.0, 0.66))
+	return {
+		"manual": Vector2(start_x, y),
+		"ai": Vector2(start_x + manual_size.x + gap, y),
+	}
 
 
 func _control_mode_label(mode: int) -> String:
