@@ -1,5 +1,7 @@
 extends SceneTree
 
+const Config := preload("res://scripts/game_config.gd")
+
 
 func _initialize() -> void:
 	var scene: Node = load("res://scenes/main.tscn").instantiate()
@@ -143,12 +145,30 @@ func _initialize() -> void:
 	_assert(scene.stage_hazards.any(func(hazard: Dictionary) -> bool: return hazard.kind == "rock"), "rock belt spawns rock hazards")
 	scene.load_stage(3)
 	_assert(scene.stage_hazards.any(func(hazard: Dictionary) -> bool: return str(hazard.kind).begins_with("plasma")), "plasma nest spawns reflectors")
+	scene.load_stage(1)
+	var diver: Dictionary = scene.swarm.enemies.filter(func(enemy: Dictionary) -> bool: return enemy.kind == "diver")[0]
+	diver.dive = 1.0
+	diver.x = 18.0
+	var dive_preview_left: float = scene._enemy_dive_preview_end_x(diver)
+	_assert(dive_preview_left >= 36.0, "dive preview clamps to left playfield")
+	diver.x = Config.W - 18.0
+	var dive_preview_right: float = scene._enemy_dive_preview_end_x(diver)
+	_assert(dive_preview_right <= Config.W - 36.0, "dive preview clamps to right playfield")
+	scene.queue_redraw()
+	await process_frame
 
 	scene.load_stage(4)
 	_assert(scene.boss_controller.is_alive(), "boss stage spawns boss")
 	_assert(scene.boss_controller.boss.has("parts"), "boss has breakable parts")
 	_assert(scene.audio_manager.current_music_key == "boss_core", "boss stage starts boss music")
 	_assert(scene.audio_manager.has_overdrive_music_layer("boss_core"), "boss stage has an overdrive music layer")
+	scene.boss_controller.boss.tell = 0.45
+	var beam_preview: Rect2 = scene._boss_beam_preview_rect()
+	_assert(beam_preview.position.x < scene.boss_controller.boss.x and beam_preview.end.x > scene.boss_controller.boss.x, "boss beam preview covers boss lane")
+	_assert(beam_preview.position.y > scene.boss_controller.boss.y and beam_preview.end.y == Config.H, "boss beam preview reaches playfield bottom")
+	scene.queue_redraw()
+	await process_frame
+	scene.boss_controller.boss.tell = 0.0
 	var boss_hp: int = scene.boss_controller.boss.hp
 	scene.projectiles.bullets.append({"x": scene.boss_controller.boss.x + 220.0, "y": scene.boss_controller.boss.y, "vx": 0.0, "vy": 0.0, "enemy": false, "r": 4.0, "power": 1, "color": Color.WHITE})
 	scene._check_collisions()

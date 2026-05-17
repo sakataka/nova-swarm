@@ -916,6 +916,7 @@ func _draw_background() -> void:
 func _draw_playfield() -> void:
 	for hazard in stage_hazards:
 		_draw_stage_hazard(hazard)
+	_draw_threat_previews()
 	for enemy in swarm.enemies:
 		_draw_enemy(enemy)
 	if boss_controller.is_alive():
@@ -995,9 +996,62 @@ func _draw_commander(enemy: Dictionary) -> void:
 	draw_rect(Rect2(center.x - 44.0, center.y + enemy.size + 12.0, 88.0 * hp_ratio, 5.0), Color("#ff5ff0"))
 
 
+func _draw_threat_previews() -> void:
+	if boss_controller.is_alive() and float(boss_controller.boss.get("tell", 0.0)) > 0.0:
+		_draw_boss_beam_preview()
+	for enemy in swarm.enemies:
+		if float(enemy.get("dive", 0.0)) > 0.0:
+			_draw_enemy_dive_preview(enemy)
+
+
+func _draw_boss_beam_preview() -> void:
+	var rect := _boss_beam_preview_rect()
+	var charge := clampf(float(boss_controller.boss.tell) / 0.45, 0.0, 1.0)
+	var pulse := 0.5 + sin(stage_timer * 34.0) * 0.5
+	var lane_color := Color(1.0, 0.13, 0.08, 0.11 + pulse * 0.08 + charge * 0.05)
+	var core_color := Color(1.0, 0.92, 0.28, 0.18 + pulse * 0.12 + charge * 0.05)
+	draw_rect(rect, lane_color)
+	draw_rect(Rect2(rect.position.x + rect.size.x * 0.38, rect.position.y, rect.size.x * 0.24, rect.size.y), core_color)
+	draw_line(rect.position, rect.position + Vector2(0.0, rect.size.y), Color(1.0, 0.32, 0.18, 0.54), 2.0)
+	draw_line(rect.position + Vector2(rect.size.x, 0.0), rect.position + rect.size, Color(1.0, 0.32, 0.18, 0.54), 2.0)
+
+
+func _boss_beam_preview_rect() -> Rect2:
+	if boss_controller.boss.is_empty():
+		return Rect2()
+	var width := 96.0
+	var top := float(boss_controller.boss.y) + 122.0
+	return Rect2(float(boss_controller.boss.x) - width * 0.5, top, width, Config.H - top)
+
+
+func _draw_enemy_dive_preview(enemy: Dictionary) -> void:
+	var start := Vector2(float(enemy.x), float(enemy.y) + float(enemy.size) * 0.72)
+	var end := Vector2(_enemy_dive_preview_end_x(enemy), Config.H - 22.0)
+	var mid := Vector2(lerpf(start.x, end.x, 0.54), lerpf(start.y, end.y, 0.48))
+	var pulse := 0.5 + sin(stage_timer * 18.0 + float(enemy.id)) * 0.5
+	var warning := Color(1.0, 0.28, 0.14, 0.22 + pulse * 0.08)
+	var edge := Color(1.0, 0.94, 0.38, 0.42 + pulse * 0.14)
+	draw_polyline(PackedVector2Array([start, mid, end]), warning, 14.0, true)
+	draw_polyline(PackedVector2Array([start, mid, end]), edge, 2.0, true)
+	for i in range(3):
+		var ratio := 0.22 + float(i) * 0.2
+		var center := start.lerp(end, ratio)
+		var size := 9.0 + pulse * 2.0
+		var points := PackedVector2Array([
+			center + Vector2(-size, -size * 0.7),
+			center + Vector2(size, -size * 0.7),
+			center + Vector2(0.0, size),
+		])
+		draw_colored_polygon(points, Color(1.0, 0.86, 0.24, 0.28 + pulse * 0.16))
+
+
+func _enemy_dive_preview_end_x(enemy: Dictionary) -> float:
+	var freq := 8.0 if str(enemy.get("kind", "")) == "zig" else 4.0
+	var sway := sin(float(enemy.get("t", 0.0)) * freq) * 42.0
+	return clampf(float(enemy.get("x", Config.W * 0.5)) + sway, 36.0, Config.W - 36.0)
+
+
 func _draw_boss() -> void:
-	if boss_controller.boss.tell > 0.0:
-		draw_line(Vector2(boss_controller.boss.x, boss_controller.boss.y + 140.0), Vector2(player.x, player.y), Color(1, 0.18, 0.12, 0.55), 3.0)
 	var tint := Color(1, 0.86, 0.86, 1) if boss_controller.boss.phase >= 2 else Color.WHITE
 	if final_boss_texture:
 		draw_texture_rect(final_boss_texture, Rect2(boss_controller.boss.x - 205.0, boss_controller.boss.y - 205.0, 410.0, 410.0), false, tint)
