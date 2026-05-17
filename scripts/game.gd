@@ -232,6 +232,9 @@ func _select_title_mode_at(position: Vector2) -> bool:
 	if Rect2(hitboxes.ai).has_point(position):
 		selected_control_mode = ControlMode.AI
 		return true
+	if _title_start_hitbox().has_point(position):
+		reset()
+		return true
 	return false
 
 
@@ -1263,8 +1266,9 @@ func _draw_overlay() -> void:
 	if state == GameState.TITLE and ui_texture:
 		draw_texture_rect_region(ui_texture, Rect2(130, Config.HUD + 92, 700, 214), ui_regions.logo)
 		_draw_title_mode_select(Config.HUD + 330.0)
-		hud.draw_centered(self, font, sub, Config.HUD + 392, 22, Color("#ff7af0"))
-		hud.draw_centered(self, font, "STAGE GIMMICKS / BUILD CHOICES / OVERDRIVE CONVERT", Config.HUD + 440, 17, Color(0.89, 0.98, 1.0, 0.82))
+		_draw_title_start_button()
+		hud.draw_centered(self, font, sub, Config.HUD + 454, 15, Color("#ff7af0"))
+		hud.draw_centered(self, font, "STAGE GIMMICKS / BUILD CHOICES / OVERDRIVE CONVERT", Config.HUD + 492, 17, Color(0.89, 0.98, 1.0, 0.82))
 	elif state == GameState.VICTORY and ui_texture:
 		draw_texture_rect_region(ui_texture, Rect2(146, Config.HUD + 72, 668, 210), ui_regions.ending)
 		_draw_arcade_title(title, Config.HUD + 304.0, 44, Color("#dffcff"))
@@ -1380,6 +1384,20 @@ func _draw_title_mode_select(y: float) -> void:
 	draw_string(font, positions.manual, manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, manual_color)
 	draw_string(font, positions.ai, ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ai_color)
 	hud.draw_centered(self, font, "CLICK OR LEFT / RIGHT SELECT", y + 46.0, 14, Color(0.89, 0.98, 1.0, 0.66))
+
+
+func _draw_title_start_button() -> void:
+	var rect := _title_start_hitbox()
+	var color := Color("#ff7af0")
+	draw_rect(rect, Color(0.02, 0.06, 0.12, 0.62))
+	draw_rect(rect, Color(color, 0.58), false, 2.0)
+	draw_rect(rect.grow(-5.0), Color(color, 0.14))
+	_draw_centered_in_width("START", rect.position.x, rect.size.x, rect.position.y + 31.0, 24, Color("#fff6ff"))
+	_draw_centered_in_width(_control_mode_label(selected_control_mode), rect.position.x, rect.size.x, rect.position.y + 56.0, 13, Color(0.89, 0.98, 1.0, 0.76))
+
+
+func _title_start_hitbox() -> Rect2:
+	return Rect2((Config.W - 216.0) * 0.5, Config.HUD + 394.0, 216.0, 72.0)
 
 
 func _draw_title_mode_button(rect: Rect2, selected: bool, color: Color) -> void:

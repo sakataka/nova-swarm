@@ -2,13 +2,14 @@ extends Node
 class_name NovaAudioManager
 
 const MUSIC_BANK_LABEL := "nova_swarm"
-const MUSIC_VOLUME_DB := -18.0
-const MUSIC_DUCK_DB := -28.0
-const MUSIC_OVERDRIVE_DB := -15.0
+const USE_RESONATE_MUSIC := false
+const MUSIC_VOLUME_DB := -30.0
+const MUSIC_DUCK_DB := -38.0
+const MUSIC_OVERDRIVE_DB := -27.0
 const MUSIC_FADE_TIME := 1.25
 const OVERDRIVE_STEM_NAME := "overdrive"
 const OVERDRIVE_STEM_FADE_TIME := 0.38
-const OVERDRIVE_FALLBACK_VOLUME_DB := -22.0
+const OVERDRIVE_FALLBACK_VOLUME_DB := -34.0
 
 const MUSIC_PATHS := {
 	"title": "res://public/assets/audio/music/title_neon_loop.wav",
@@ -20,9 +21,9 @@ const MUSIC_PATHS := {
 }
 
 const OVERDRIVE_LAYER_SETTINGS := {
-	"stage_drive": {"root": 220.0, "energy": 0.75, "volume": -15.0},
-	"stage_pressure": {"root": 277.18, "energy": 0.92, "volume": -14.0},
-	"boss_core": {"root": 164.81, "energy": 1.0, "volume": -13.0},
+	"stage_drive": {"root": 220.0, "energy": 0.75, "volume": -34.0},
+	"stage_pressure": {"root": 277.18, "energy": 0.92, "volume": -33.0},
+	"boss_core": {"root": 164.81, "energy": 1.0, "volume": -32.0},
 }
 
 var muted := false
@@ -89,9 +90,9 @@ func play_music(music_key: String, fade_time := MUSIC_FADE_TIME) -> void:
 	if muted or not _enabled:
 		return
 
-	if _try_play_resonate(fade_time):
+	if USE_RESONATE_MUSIC and _try_play_resonate(fade_time):
 		return
-	if _resonate_manager and _resonate_manager.has_method("play") and _resonate_manager.get("has_loaded") != true:
+	if USE_RESONATE_MUSIC and _resonate_manager and _resonate_manager.has_method("play") and _resonate_manager.get("has_loaded") != true:
 		return
 	_play_fallback_music(music_key, fade_time)
 
@@ -130,7 +131,7 @@ func toggle_mute() -> void:
 func update_music(dt: float) -> void:
 	if not _enabled:
 		return
-	if _pending_music_key != "" and not muted:
+	if USE_RESONATE_MUSIC and _pending_music_key != "" and not muted:
 		_try_play_resonate(MUSIC_FADE_TIME)
 	_update_fallback_fade(dt)
 
@@ -188,6 +189,8 @@ func _setup_music() -> void:
 	_overdrive_music_player.finished.connect(_on_overdrive_fallback_finished)
 	add_child(_overdrive_music_player)
 
+	if not USE_RESONATE_MUSIC:
+		return
 	_resonate_manager = get_node_or_null("/root/MusicManager")
 	if _resonate_manager:
 		_create_resonate_bank()

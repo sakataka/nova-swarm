@@ -22,6 +22,12 @@ func _initialize() -> void:
 	_assert(scene.selected_control_mode == scene.ControlMode.AI, "mouse selection switches title mode to ai")
 	_assert(scene._select_title_mode_at(Rect2(title_hitboxes.manual).get_center()), "title pointer selects manual")
 	_assert(scene.selected_control_mode == scene.ControlMode.MANUAL, "mouse selection switches title mode to manual")
+	scene.selected_control_mode = scene.ControlMode.AI
+	_assert(scene._select_title_mode_at(scene._title_start_hitbox().get_center()), "title pointer starts game")
+	_assert(scene.state == scene.GameState.PLAYING, "mouse start enters play")
+	_assert(scene.control_mode == scene.ControlMode.AI, "mouse start keeps selected control mode")
+	scene.state = scene.GameState.TITLE
+	scene.selected_control_mode = scene.ControlMode.MANUAL
 
 	scene.reset()
 	_assert(scene.state == scene.GameState.PLAYING, "reset starts play")
