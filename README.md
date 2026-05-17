@@ -54,6 +54,8 @@ export_presets.cfg
 
 `scripts/game.gd` は `GameController` として各サブシステムを束ねます。ステージ・敵・HUD用数字、アップグレード候補などの調整値は `scripts/game_config.gd` に集約しています。スプライトシートは実行時に黒背景を透明化して使います。
 
+Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて継続開発する方針は [`docs/godot-ai-development-workflow.md`](docs/godot-ai-development-workflow.md) にまとめています。Nova Swarm の責務分割を、次の Godot プロジェクトや伸ばすワーム系ゲームへ移すための制作メモです。
+
 主な分割:
 
 - `player.gd`: 自機のライフ、ボム、無敵、連続撃破チェイン、アップグレード修飾
