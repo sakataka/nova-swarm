@@ -95,9 +95,14 @@ func _candidate_positions(current: Vector2, intent: Vector2) -> Array[Vector2]:
 		clampf(intent.y, MIN_Y, MAX_Y),
 	]
 	var positions: Array[Vector2] = []
+	var seen_positions := {}
 	for x in x_lanes:
 		for y in y_lanes:
-			positions.append(Vector2(x, y))
+			var position := Vector2(x, y)
+			if seen_positions.has(position):
+				continue
+			seen_positions[position] = true
+			positions.append(position)
 	return positions
 
 

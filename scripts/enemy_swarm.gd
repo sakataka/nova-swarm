@@ -72,10 +72,17 @@ func load_stage(stage_data: Dictionary, enemy_stats: Dictionary, difficulty: flo
 func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: float, difficulty: float, player_x: float, projectiles: RefCounted, enemy_stats: Dictionary) -> void:
 	if enemies.is_empty():
 		return
-	var edge := enemies.any(func(enemy: Dictionary) -> bool: return enemy.x < 54.0 or enemy.x > width - 54.0)
+	var edge := false
+	var commander_alive := false
+	for enemy in enemies:
+		if enemy.x < 54.0 or enemy.x > width - 54.0:
+			edge = true
+		if enemy.kind == "commander" and enemy.hp > 0:
+			commander_alive = true
+		if edge and commander_alive:
+			break
 	if edge:
 		swarm_dir *= -1.0
-	var commander_alive := enemies.any(func(enemy: Dictionary) -> bool: return enemy.kind == "commander" and enemy.hp > 0)
 	var command_fire_mult := 1.22 if commander_alive else 1.0
 	var command_dive_mult := 1.28 if commander_alive else 1.0
 

@@ -109,6 +109,17 @@ func _initialize() -> void:
 	scene._fire_player()
 	_assert(scene.projectiles.bullets.size() == 2, "normal shot fires two bullets")
 	_assert(scene.projectiles.bullets[0].power == 1, "normal shot uses base power")
+	scene.projectiles.clear()
+	scene.swarm.enemies.clear()
+	scene.score = 0
+	scene.player.combo = 0
+	scene.player.combo_timer = 0.0
+	scene.swarm.enemies.append({"id": 999, "kind": "bug", "x": scene.player.x, "y": scene.player.y - 220.0, "hp": 1, "max_hp": 1, "score": 120, "size": 34.0})
+	scene.projectiles.bullets.append({"x": scene.player.x, "y": scene.player.y - 220.0, "vx": 0.0, "vy": 0.0, "enemy": false, "r": 6.0, "power": 1, "color": Color.WHITE})
+	scene.projectiles.bullets.append({"x": scene.player.x, "y": scene.player.y - 220.0, "vx": 0.0, "vy": 0.0, "enemy": false, "r": 6.0, "power": 1, "color": Color.WHITE})
+	scene._check_collisions()
+	_assert(scene.score == 120, "dead enemy is scored once per frame")
+	_assert(scene.swarm.enemies.is_empty(), "dead enemy is removed before later collisions")
 
 	scene.projectiles.clear()
 	scene.player.resonance = 100.0
@@ -161,6 +172,15 @@ func _initialize() -> void:
 	scene.load_stage(2)
 	_assert(scene.audio_manager.current_music_key == "stage_pressure", "later stages use pressure music")
 	_assert(scene.stage_hazards.any(func(hazard: Dictionary) -> bool: return hazard.kind == "rock"), "rock belt spawns rock hazards")
+	scene.stage_hazards.clear()
+	scene.stage_hazards.append({"kind": "rock", "x": 240.0, "y": Config.HUD + 150.0, "r": 28.0, "hp": 1, "t": 0.0, "seed": 42})
+	scene.projectiles.clear()
+	scene.score = 0
+	scene.projectiles.bullets.append({"x": 240.0, "y": Config.HUD + 150.0, "vx": 0.0, "vy": 0.0, "enemy": false, "r": 6.0, "power": 1, "color": Color.WHITE})
+	scene.projectiles.bullets.append({"x": 240.0, "y": Config.HUD + 150.0, "vx": 0.0, "vy": 0.0, "enemy": false, "r": 6.0, "power": 1, "color": Color.WHITE})
+	scene._check_rock_collisions()
+	_assert(scene.score == 340, "destroyed rock is scored once per frame")
+	_assert(scene.stage_hazards.is_empty(), "destroyed rock is removed before later collisions")
 	scene.load_stage(3)
 	_assert(scene.stage_hazards.any(func(hazard: Dictionary) -> bool: return str(hazard.kind).begins_with("plasma")), "plasma nest spawns reflectors")
 	scene.load_stage(1)

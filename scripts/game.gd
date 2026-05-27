@@ -566,6 +566,8 @@ func _check_rock_collisions() -> void:
 		if hazard.kind != "rock":
 			continue
 		for bullet in projectiles.bullets:
+			if hazard.hp <= 0:
+				break
 			if Vector2(bullet.x, bullet.y).distance_to(Vector2(hazard.x, hazard.y)) >= float(hazard.r) + bullet.r:
 				continue
 			bullet.y = -999.0 if not bullet.enemy else Config.H + 999.0
@@ -573,13 +575,14 @@ func _check_rock_collisions() -> void:
 				hazard.hp -= bullet.power
 				score += 20
 				explosions.append({"x": bullet.x, "y": bullet.y, "t": 0.0, "big": false})
-		if player.invuln <= 0.0 and Vector2(player.x, player.y).distance_to(Vector2(hazard.x, hazard.y)) < float(hazard.r) + 24.0:
-			_hurt()
 		if hazard.hp <= 0:
 			score += 320
 			explosions.append({"x": hazard.x, "y": hazard.y, "t": 0.0, "big": true})
 			if randf() < 0.34 + item_drop_bonus:
 				items.append({"kind": "shield", "x": hazard.x, "y": hazard.y, "vy": 78.0, "t": 0.0})
+			continue
+		if player.invuln <= 0.0 and Vector2(player.x, player.y).distance_to(Vector2(hazard.x, hazard.y)) < float(hazard.r) + 24.0:
+			_hurt()
 	stage_hazards = stage_hazards.filter(func(hazard: Dictionary) -> bool: return hazard.kind != "rock" or hazard.hp > 0)
 	projectiles.bullets = projectiles.bullets.filter(func(bullet: Dictionary) -> bool: return bullet.y > -900.0 and bullet.y < Config.H + 900.0)
 
@@ -669,6 +672,8 @@ func _check_collisions() -> void:
 		if bullet.enemy:
 			continue
 		for enemy in swarm.enemies:
+			if enemy.hp <= 0:
+				continue
 			if _distance(bullet, enemy) < enemy.size * 0.62 + bullet.r:
 				bullet.y = -999.0
 				enemy.hp -= bullet.power
@@ -691,8 +696,9 @@ func _check_collisions() -> void:
 					audio_manager.play_sfx("boom")
 				else:
 					audio_manager.play_sfx("hit")
+				break
 
-		if boss_controller.is_alive() and _boss_hit_test(Vector2(bullet.x, bullet.y), bullet.r):
+		if bullet.y > -900.0 and boss_controller.is_alive() and _boss_hit_test(Vector2(bullet.x, bullet.y), bullet.r):
 			bullet.y = -999.0
 			var weak_bonus := _damage_boss_part(Vector2(bullet.x, bullet.y), bullet.power)
 			boss_controller.boss.hp -= bullet.power + weak_bonus
