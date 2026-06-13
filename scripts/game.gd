@@ -188,6 +188,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif state == GameState.TITLE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
 		_toggle_selected_control_mode()
 		get_viewport().set_input_as_handled()
+	elif state == GameState.UPGRADE and _handle_upgrade_number_input(event):
+		get_viewport().set_input_as_handled()
 	elif state == GameState.UPGRADE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
 		_move_upgrade_selection(-1 if event.is_action_pressed("move_left") else 1)
 		get_viewport().set_input_as_handled()
@@ -398,12 +400,31 @@ func _move_upgrade_selection(direction: int) -> void:
 	upgrade_selected = posmod(upgrade_selected + direction, upgrade_options.size())
 
 
+func _handle_upgrade_number_input(event: InputEvent) -> bool:
+	if not (event is InputEventKey):
+		return false
+	var key_event := event as InputEventKey
+	if not key_event.pressed or key_event.echo:
+		return false
+	if key_event.keycode < KEY_1 or key_event.keycode > KEY_3:
+		return false
+	var selected_index := int(key_event.keycode - KEY_1)
+	if selected_index >= upgrade_options.size():
+		return false
+	upgrade_selected = selected_index
+	_apply_selected_upgrade()
+	return true
+
+
 func _begin_upgrade(next_stage: int) -> void:
 	pending_stage = next_stage
 	state = GameState.UPGRADE
 	upgrade_selected = 0
 	upgrade_timer = 0.0
 	upgrade_options = _roll_upgrade_options()
+	audio_manager.set_music_overdriven(false)
+	if overdrive_aura:
+		overdrive_aura.emitting = false
 	audio_manager.set_music_ducked(true)
 
 
@@ -917,7 +938,7 @@ func _draw() -> void:
 	draw_set_transform(shake + zoom_offset, 0.0, Vector2(overdrive_zoom, overdrive_zoom))
 	draw_rect(Rect2(0, 0, Config.W, Config.H), Color("#04050a"))
 	_draw_background()
-	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration())
+	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), ui_texture, ui_regions, audio_manager.muted)
 	_draw_control_mode_badge()
 	_draw_ai_rival()
 	_draw_playfield()
@@ -1273,8 +1294,9 @@ func _draw_overlay() -> void:
 		draw_texture_rect_region(ui_texture, Rect2(130, Config.HUD + 92, 700, 214), ui_regions.logo)
 		_draw_title_mode_select(Config.HUD + 330.0)
 		_draw_title_start_button()
-		hud.draw_centered(self, font, sub, Config.HUD + 454, 15, Color("#ff7af0"))
-		hud.draw_centered(self, font, "STAGE GIMMICKS / BUILD CHOICES / OVERDRIVE CONVERT", Config.HUD + 492, 17, Color(0.89, 0.98, 1.0, 0.82))
+		hud.draw_centered(self, font, sub, Config.HUD + 488, 15, Color("#ff7af0"))
+		hud.draw_centered(self, font, "STAGE GIMMICKS / BUILD CHOICES / OVERDRIVE CONVERT", Config.HUD + 522, 17, Color(0.89, 0.98, 1.0, 0.82))
+		hud.draw_centered(self, font, "SPACE SHOT / B BOMB / E OVERDRIVE / T AI / P PAUSE / M MUTE", Config.HUD + 556, 12, Color(0.89, 0.98, 1.0, 0.6))
 	elif state == GameState.VICTORY and ui_texture:
 		draw_texture_rect_region(ui_texture, Rect2(146, Config.HUD + 72, 668, 210), ui_regions.ending)
 		_draw_arcade_title(title, Config.HUD + 304.0, 44, Color("#dffcff"))
@@ -1284,7 +1306,9 @@ func _draw_overlay() -> void:
 	else:
 		_draw_arcade_title(title, Config.HUD + 214.0, 58, Color("#dffcff"))
 		hud.draw_centered(self, font, sub, Config.HUD + 292, 22, Color("#ff7af0"))
-		if state == GameState.GAME_OVER and not stage_results.is_empty():
+		if state == GameState.PAUSED:
+			_draw_controls_panel(Config.HUD + 332.0)
+		elif state == GameState.GAME_OVER and not stage_results.is_empty():
 			_draw_results_table(Config.HUD + 334.0)
 		else:
 			hud.draw_centered(self, font, "STAGE GIMMICKS / BUILD CHOICES / OVERDRIVE CONVERT", Config.HUD + 340, 17, Color(0.89, 0.98, 1.0, 0.82))
@@ -1311,9 +1335,29 @@ func _draw_upgrade_overlay() -> void:
 		draw_rect(Rect2(x, y, card_w, card_h), Color(color, 0.7 if selected else 0.34), false, 2.0)
 		if selected:
 			draw_rect(Rect2(x + 5.0, y + 5.0, card_w - 10.0, card_h - 10.0), Color(color, 0.12))
+		_draw_centered_in_width(str(i + 1), x + 12.0, 24.0, y + 27.0, 14, Color("#fff06a"))
 		_draw_centered_in_width(str(option.name), x, card_w, y + 48.0, 19, color)
 		_draw_centered_in_width(str(option.desc), x, card_w, y + 90.0, 15, Color(0.89, 0.98, 1.0, 0.82))
-	hud.draw_centered(self, font, "LEFT / RIGHT SELECT   ENTER CONFIRM", Config.HUD + 452.0, 18, Color("#ff7af0"))
+	hud.draw_centered(self, font, "1-3 / LEFT / RIGHT SELECT   ENTER CONFIRM", Config.HUD + 452.0, 18, Color("#ff7af0"))
+
+
+func _draw_controls_panel(y: float) -> void:
+	var rect := Rect2(284.0, y, 392.0, 210.0)
+	draw_rect(rect, Color(0.02, 0.06, 0.12, 0.84))
+	draw_rect(rect, Color(0.33, 0.91, 1.0, 0.34), false, 1.0)
+	var rows := [
+		["MOVE", "WASD / ARROWS"],
+		["SHOT", "SPACE"],
+		["BOMB", "B / SHIFT"],
+		["OVERDRIVE", "E"],
+		["AI MODE", "T"],
+		["PAUSE", "P"],
+		["MUTE", "M"],
+	]
+	for i in range(rows.size()):
+		var row_y := y + 34.0 + float(i) * 24.0
+		draw_string(font, Vector2(rect.position.x + 34.0, row_y), rows[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#72eaff"))
+		draw_string(font, Vector2(rect.position.x + 170.0, row_y), rows[i][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.89, 0.98, 1.0, 0.82))
 
 
 func _draw_centered_in_width(text: String, x: float, width: float, y: float, size: int, color: Color) -> void:

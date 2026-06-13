@@ -10,6 +10,8 @@ const MUSIC_FADE_TIME := 1.25
 const OVERDRIVE_STEM_NAME := "overdrive"
 const OVERDRIVE_STEM_FADE_TIME := 0.38
 const OVERDRIVE_FALLBACK_VOLUME_DB := -34.0
+const MUSIC_VOLUME_TWEEN_TIME := 0.25
+const SFX_MIN_INTERVAL_MS := 70
 
 const MUSIC_PATHS := {
 	"title": "res://public/assets/audio/music/title_neon_loop.wav",
@@ -34,6 +36,7 @@ var music_streams: Dictionary = {}
 var overdrive_music_streams: Dictionary = {}
 var _music_players: Array[AudioStreamPlayer] = []
 var _overdrive_music_player: AudioStreamPlayer
+var _volume_tween: Tween
 var _overdrive_fade_tween: Tween
 var _active_music_player := 0
 var _fade_time := 0.0
@@ -47,10 +50,12 @@ var _resonate_manager: Node
 var _resonate_ready := false
 var _pending_music_key := ""
 var _music_bank: Node
+var _sfx_last_played_ms: Dictionary = {}
 
 
 func _ready() -> void:
 	_enabled = DisplayServer.get_name() != "headless"
+	_setup_master_limiter()
 	_setup_sfx()
 	_setup_music()
 
@@ -139,6 +144,10 @@ func update_music(dt: float) -> void:
 func play_sfx(sfx_name: String) -> void:
 	if muted or not _enabled or not sfx_streams.has(sfx_name):
 		return
+	var now := Time.get_ticks_msec()
+	if now - int(_sfx_last_played_ms.get(sfx_name, -SFX_MIN_INTERVAL_MS)) < SFX_MIN_INTERVAL_MS:
+		return
+	_sfx_last_played_ms[sfx_name] = now
 	_play_stream(sfx_streams[sfx_name], -8.0 if sfx_name in ["bomb", "boss"] else -12.0)
 
 
@@ -198,6 +207,18 @@ func _setup_music() -> void:
 			_resonate_manager.connect("updated", _on_resonate_updated)
 
 
+func _setup_master_limiter() -> void:
+	if not _enabled:
+		return
+	var master_bus := AudioServer.get_bus_index("Master")
+	for i in range(AudioServer.get_bus_effect_count(master_bus)):
+		if AudioServer.get_bus_effect(master_bus, i) is AudioEffectHardLimiter:
+			return
+	var limiter := AudioEffectHardLimiter.new()
+	limiter.ceiling_db = -1.0
+	AudioServer.add_bus_effect(master_bus, limiter)
+
+
 func _create_resonate_bank() -> void:
 	if _music_bank:
 		return
@@ -251,6 +272,7 @@ func _play_fallback_music(music_key: String, fade_time: float) -> void:
 		return
 	if not music_streams.has(music_key):
 		return
+	_kill_volume_tween()
 	var next_index := 1 - _active_music_player
 	var next_player := _music_players[next_index]
 	next_player.stream = music_streams[music_key]
@@ -274,9 +296,11 @@ func _update_fallback_fade(dt: float) -> void:
 	var t := _fade_elapsed / _fade_time
 	var active := _music_players[_active_music_player]
 	var previous := _music_players[1 - _active_music_player]
-	active.volume_db = lerpf(-80.0, _target_music_volume(), t)
+	var target_linear := db_to_linear(_target_music_volume())
+	active.volume_db = linear_to_db(maxf(0.00001, target_linear * t))
 	if previous.playing:
-		previous.volume_db = lerpf(_previous_volume_db, -80.0, t)
+		var previous_linear := db_to_linear(_previous_volume_db)
+		previous.volume_db = linear_to_db(maxf(0.00001, previous_linear * (1.0 - t)))
 		if t >= 1.0:
 			previous.stop()
 
@@ -285,10 +309,15 @@ func _apply_music_volume() -> void:
 	var volume := _target_music_volume()
 	if _resonate_manager and _resonate_manager.has_method("set_volume"):
 		_resonate_manager.call("set_volume", volume)
-	if not _music_players.is_empty():
-		_music_players[_active_music_player].volume_db = volume
+	if not _music_players.is_empty() and _fade_elapsed >= _fade_time:
+		_kill_volume_tween()
+		_volume_tween = create_tween()
+		_volume_tween.tween_property(_music_players[_active_music_player], "volume_db", volume, MUSIC_VOLUME_TWEEN_TIME)
 	if _overdrive_music_player and _overdrive_music_player.playing:
-		_overdrive_music_player.volume_db = MUSIC_DUCK_DB if _music_ducked else OVERDRIVE_FALLBACK_VOLUME_DB
+		if _overdrive_fade_tween and _overdrive_fade_tween.is_running():
+			_overdrive_fade_tween.kill()
+		_overdrive_fade_tween = create_tween()
+		_overdrive_fade_tween.tween_property(_overdrive_music_player, "volume_db", MUSIC_DUCK_DB if _music_ducked else OVERDRIVE_FALLBACK_VOLUME_DB, MUSIC_VOLUME_TWEEN_TIME)
 
 
 func _target_music_volume() -> float:
@@ -315,9 +344,15 @@ func _on_overdrive_fallback_finished() -> void:
 
 
 func _stop_music_players() -> void:
+	_kill_volume_tween()
 	for player in _music_players:
 		player.stop()
 		player.volume_db = -80.0
+
+
+func _kill_volume_tween() -> void:
+	if _volume_tween and _volume_tween.is_running():
+		_volume_tween.kill()
 
 
 func _stop_overdrive_fallback() -> void:

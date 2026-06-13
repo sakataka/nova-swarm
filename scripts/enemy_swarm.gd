@@ -75,7 +75,7 @@ func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: fl
 	var edge := false
 	var commander_alive := false
 	for enemy in enemies:
-		if enemy.x < 54.0 or enemy.x > width - 54.0:
+		if enemy.dive <= 0.0 and enemy.kind != "commander" and (enemy.x < 54.0 or enemy.x > width - 54.0):
 			edge = true
 		if enemy.kind == "commander" and enemy.hp > 0:
 			commander_alive = true
@@ -109,7 +109,7 @@ func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: fl
 		if enemy.shoot <= 0.0:
 			var kind_mult := 1.7 if enemy.kind == "saucer" else 1.45 if is_commander else 1.0
 			var chance: float = stage_data.fire * difficulty * command_fire_mult * kind_mult
-			enemy.shoot = 1.2 + randf() * 3.4 / maxf(0.55, chance)
+			enemy.shoot = 1.2 + (randf() * 3.4 / maxf(0.55, chance))
 			if is_commander:
 				projectiles.fire_enemy(enemy, player_x, enemy_stats)
 			elif randf() < 0.2 + stage_index * 0.035 or enemy.dive > 0.0:
