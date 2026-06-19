@@ -14,6 +14,27 @@ const SPRITE_GRID := 4.0
 const SPRITE_CELL := SPRITE_SHEET_SIZE / SPRITE_GRID
 const SPRITE_PAD := 12.0
 
+const UI_BG := Color("#08070d")
+const UI_PANEL := Color("#120914")
+const UI_PANEL_DARK := Color("#050308")
+const UI_TEXT := Color("#f3f7ff")
+const UI_TEXT_DIM := Color(0.78, 0.88, 0.96, 0.66)
+const UI_CYAN := Color("#58f1ff")
+const UI_RED := Color("#ff354a")
+const UI_DEEP_RED := Color("#7c1021")
+const UI_MAGENTA := Color("#ff4bd8")
+const UI_AMBER := Color("#ffd45a")
+const UI_GREEN := Color("#8dff8a")
+const UI_PANEL_ALPHA := 0.84
+const UI_LINE_ALPHA := 0.52
+const UI_TOUCH_SHOT_SIZE := 112.0
+const UI_TOUCH_BOMB_SIZE := 88.0
+const UI_TOUCH_OVERDRIVE_SIZE := 84.0
+const UI_TOUCH_PAUSE_SIZE := 66.0
+const UI_TOUCH_STICK_RADIUS := 92.0
+const UI_TOUCH_STICK_HIT := 222.0
+const UI_TOUCH_KNOB := 28.0
+
 const STAGES := [
 	{"name": "STAR DRIFT", "bg": 0, "rows": 3, "cols": 8, "kinds": ["bug", "bug", "diver"], "speed": 24.0, "fire": 0.62, "dive": 0.45, "boss": false, "stars": 0.86, "scroll": 0.82, "tint": Color("#91dfff")},
 	{"name": "VENOM NEBULA", "bg": 1, "rows": 4, "cols": 8, "kinds": ["bug", "zig", "diver"], "speed": 32.0, "fire": 0.86, "dive": 0.8, "boss": false, "stars": 1.0, "scroll": 1.0, "tint": Color("#c77cff")},

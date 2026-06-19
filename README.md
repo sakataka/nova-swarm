@@ -47,6 +47,7 @@ scripts/ai_boss_stage5_test.gd
 public/assets/spritesheet.png
 public/assets/backgrounds.png
 public/assets/ui_atlas.png
+public/assets/ui_chrome.png
 public/assets/rock_obstacle.png
 public/assets/projectile_atlas.png
 public/assets/final_boss.png
@@ -64,7 +65,7 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 - `enemy_swarm.gd`: 通常ステージの編隊、急降下、射撃
 - `boss_controller.gd`: ボスのフェーズ、攻撃、ビーム予兆、部位破壊
 - `projectile_manager.gd`: 自弾・敵弾、分岐ショットの生成と更新
-- `hud.gd`: HUD描画、リソースアイコン、ミュート表示、ボスHP/Resonanceゲージ
+- `hud.gd`: 赤い中枢侵食テーマのHUD描画、リソースアイコン、ミュート表示、ボスHP/Resonanceゲージ
 - `audio_manager.gd`: 効果音、Resonate対応BGM切り替え、Overdrive用BGMレイヤー、クロスフェード、ミュート、音量遷移、Masterリミッター、headless時の音声無効化
 
 ## 主なゲームシステム
@@ -81,6 +82,7 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 - `public/assets/spritesheet.png`: 自機、敵、弾、爆発、ボスなどの4x4固定グリッドスプライト
 - `public/assets/backgrounds.png`: 5ステージ分の宇宙背景アトラス
 - `public/assets/ui_atlas.png`: タイトルロゴ、アイテムアイコン、ステージバナー、エンディング絵のUIアトラス
+- `public/assets/ui_chrome.png`: 赤い中枢侵食テーマのパネル表面、警告コア、タッチボタン用ピクセルUIアトラス
 - `public/assets/rock_obstacle.png`: `ROCK BELT` の岩障害物用スプライト。赤い鉱脈背景に馴染む生成画像を透明化して使用
 - `public/assets/projectile_atlas.png`: 自弾、Overdrive弾、敵弾、ボス弾用の生成スプライトアトラス
 - `public/assets/final_boss.png`: 5面ボス用の高解像度生成スプライト
@@ -99,6 +101,8 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 - BGMは重なりを避けるため標準では単一のフォールバック再生経路に寄せ、全体音量とOverdriveレイヤー音量をかなり控えめにしています。duck解除や曲切り替えは短いフェードで処理し、SFXの短時間連打とMasterバスのピークも抑えています。
 - ステージ専用ギミック、ビルド分岐アップグレード、ボス部位破壊、リザルト改善ヒントを追加しています。
 - タイトル画面とポーズ画面に操作ガイドを表示し、HUDはライフ・ボム・シールドをアイコンで示します。ミュート中は右上に状態表示が出ます。
+- UI/UXは最終ボスと`CITADEL CORE`に合わせた赤い中枢侵食テーマへ刷新しています。HUD、タイトル、アップグレード、結果、ポーズ、タッチ操作は同じ端末パネル表現で統一し、Resonance/Overdrive、ボスHP、CHAIN、AI Rivalなどの重要状態を色とゲージで読みやすくしています。
+- タッチUIはiPhone Air相当の縦長表示でも押しやすいよう、仮想スティック、`SHOT`、`BOMB`、`OVER`、`PAUSE`の表示とヒットボックスを大きめに調整しています。
 - 自弾・敵弾・5面ボス・ボス弱点表示を生成スプライトに差し替え、背景や岩障害物と同じ赤い鉱脈系の世界観に寄せています。
 - AI Pilotの可視化としてAI Rivalスコアを追加しています。
 - 爆発、被弾、ボム、ステージ開始、ボス攻撃に画面揺れ、フラッシュ、ヒットストップ、予兆を追加しています。

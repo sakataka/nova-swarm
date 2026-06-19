@@ -64,6 +64,7 @@ var ai_rival_timer := 0.0
 var sprite_texture: Texture2D
 var background_texture: Texture2D
 var ui_texture: Texture2D
+var ui_chrome_texture: Texture2D
 var commander_texture: Texture2D
 var commander_fx_texture: Texture2D
 var rock_obstacle_texture: Texture2D
@@ -82,6 +83,15 @@ var ui_regions := {
 	"banner": Rect2(109, 685, 1038, 148),
 	"ending": Rect2(97, 849, 1060, 334),
 }
+var ui_chrome_regions := {
+	"panel": Rect2(0, 0, 192, 72),
+	"core": Rect2(208, 0, 96, 96),
+	"warning": Rect2(320, 0, 64, 64),
+	"shot": Rect2(0, 112, 72, 72),
+	"bomb": Rect2(80, 112, 72, 72),
+	"overdrive": Rect2(160, 112, 72, 72),
+	"pause": Rect2(240, 112, 72, 72),
+}
 
 
 func _ready() -> void:
@@ -94,6 +104,7 @@ func _ready() -> void:
 	sprite_texture = _load_sprite_texture()
 	background_texture = load("res://public/assets/backgrounds.png")
 	ui_texture = _load_imported_or_png_texture("res://public/assets/ui_atlas.png")
+	ui_chrome_texture = _load_png_texture("res://public/assets/ui_chrome.png")
 	commander_texture = _load_imported_or_png_texture("res://public/assets/commander.png")
 	commander_fx_texture = _load_imported_or_png_texture("res://public/assets/commander_fx.png")
 	rock_obstacle_texture = _load_imported_or_png_texture("res://public/assets/rock_obstacle.png")
@@ -1395,8 +1406,72 @@ func _draw_sprite(key: String, cx: float, cy: float, dw: float, dh: float, tint 
 		draw_rect(Rect2(cx - dw / 2.0, cy - dh / 2.0, dw, dh), Color("#7df7ff"))
 
 
+func _draw_infection_overlay() -> void:
+	draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(0.0, 0.0, 0.0, 0.68))
+	draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(Config.UI_DEEP_RED, 0.2))
+	for i in range(12):
+		var y := Config.HUD + 18.0 + float(i) * 52.0
+		var alpha := 0.08 + float(i % 3) * 0.025
+		draw_line(Vector2(0, y), Vector2(Config.W, y), Color(Config.UI_RED, alpha), 1.0)
+	for i in range(8):
+		var x := fmod(stage_timer * 18.0 + float(i) * 137.0, Config.W)
+		draw_line(Vector2(x, Config.HUD), Vector2(x - 180.0, Config.H), Color(Config.UI_RED, 0.06), 1.0)
+
+
+func _draw_terminal_panel(rect: Rect2, accent: Color, fill_alpha := Config.UI_PANEL_ALPHA, selected := false) -> void:
+	draw_rect(rect, Color(Config.UI_PANEL_DARK, fill_alpha))
+	if ui_chrome_texture and ui_chrome_regions.has("panel"):
+		draw_texture_rect_region(ui_chrome_texture, rect, ui_chrome_regions.panel, Color(1, 1, 1, 0.2 + (0.12 if selected else 0.0)))
+	draw_rect(rect.grow(-3.0), Color(Config.UI_PANEL, fill_alpha * 0.74))
+	draw_rect(rect, Color(accent, 0.76 if selected else Config.UI_LINE_ALPHA), false, 2.0 if selected else 1.0)
+	draw_line(rect.position + Vector2(12, 5), rect.position + Vector2(rect.size.x * 0.4, 5), Color(accent, 0.8), 2.0)
+	draw_line(rect.end - Vector2(rect.size.x * 0.4, 5), rect.end - Vector2(12, 5), Color(accent, 0.35), 1.0)
+	_draw_corner_marks(rect, accent, selected)
+
+
+func _draw_corner_marks(rect: Rect2, accent: Color, selected: bool) -> void:
+	var length := 18.0 if selected else 12.0
+	var alpha := 0.92 if selected else 0.5
+	var points := [
+		[rect.position, Vector2(1, 0), Vector2(0, 1)],
+		[Vector2(rect.end.x, rect.position.y), Vector2(-1, 0), Vector2(0, 1)],
+		[Vector2(rect.position.x, rect.end.y), Vector2(1, 0), Vector2(0, -1)],
+		[rect.end, Vector2(-1, 0), Vector2(0, -1)],
+	]
+	for point in points:
+		var origin: Vector2 = point[0]
+		var axis_a: Vector2 = point[1]
+		var axis_b: Vector2 = point[2]
+		draw_line(origin, origin + axis_a * length, Color(accent, alpha), 2.0)
+		draw_line(origin, origin + axis_b * length, Color(accent, alpha), 2.0)
+
+
+func _draw_chrome_icon(key: String, rect: Rect2, tint := Color.WHITE) -> void:
+	if ui_chrome_texture and ui_chrome_regions.has(key):
+		draw_texture_rect_region(ui_chrome_texture, rect, ui_chrome_regions[key], tint)
+
+
+func _draw_core_glyph(center: Vector2, radius: float, accent: Color, active := false) -> void:
+	var pulse := 0.5 + sin(Time.get_ticks_msec() * 0.009) * 0.5
+	if ui_chrome_texture and ui_chrome_regions.has("core"):
+		var size := radius * 2.0
+		draw_texture_rect_region(ui_chrome_texture, Rect2(center.x - radius, center.y - radius, size, size), ui_chrome_regions.core, Color(1, 1, 1, 0.76))
+	draw_circle(center, radius * 0.48, Color(accent, 0.14 + pulse * 0.1))
+	draw_arc(center, radius * (0.72 + pulse * 0.08), 0.0, TAU, 48, Color(accent, 0.6 if active else 0.36), 3.0)
+	draw_arc(center, radius * 0.42, -PI * 0.25, PI * 1.35, 32, Color(Config.UI_CYAN, 0.42), 2.0)
+
+
+func _draw_terminal_button(rect: Rect2, label: String, sublabel: String, accent: Color, selected := false) -> void:
+	_draw_terminal_panel(rect, accent, 0.7, selected)
+	if selected:
+		draw_rect(rect.grow(-7.0), Color(accent, 0.14))
+	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.47, 22, Color("#fff6f4"))
+	if sublabel != "":
+		_draw_centered_in_width(sublabel, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.72, 11, Config.UI_TEXT_DIM)
+
+
 func _draw_overlay() -> void:
-	draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(0, 0, 0, 0.66))
+	_draw_infection_overlay()
 	if state == GameState.UPGRADE:
 		_draw_upgrade_overlay()
 		return
@@ -1407,29 +1482,34 @@ func _draw_overlay() -> void:
 		title = "MISSION CLEAR"
 	elif state == GameState.GAME_OVER:
 		title = "GAME OVER"
-	var sub := "PRESS P TO RETURN" if state == GameState.PAUSED else "PRESS ENTER TO START"
+	var sub := "P TO RESUME" if state == GameState.PAUSED else "ENTER TO DEPLOY"
 	if state == GameState.TITLE and ui_texture:
-		draw_texture_rect_region(ui_texture, Rect2(130, Config.HUD + 92, 700, 214), ui_regions.logo)
+		_draw_terminal_panel(Rect2(86, Config.HUD + 58, 788, 234), Config.UI_RED, 0.5)
+		_draw_core_glyph(Vector2(480, Config.HUD + 176), 80.0, Config.UI_RED, true)
+		draw_texture_rect_region(ui_texture, Rect2(124, Config.HUD + 74, 712, 218), ui_regions.logo, Color(1, 1, 1, 0.96))
+		hud.draw_centered(self, font, "CITADEL CORE SIGNAL LOCKED", Config.HUD + 286, 13, Color(Config.UI_RED, 0.86))
 		_draw_title_mode_select(Config.HUD + 330.0)
 		_draw_title_start_button()
-		hud.draw_centered(self, font, sub, Config.HUD + 488, 15, Color("#ff7af0"))
-		hud.draw_centered(self, font, "STAGE GIMMICKS / BUILD CHOICES / OVERDRIVE CONVERT", Config.HUD + 522, 17, Color(0.89, 0.98, 1.0, 0.82))
-		hud.draw_centered(self, font, "SPACE SHOT / B BOMB / E OVERDRIVE / T AI / P PAUSE / M MUTE", Config.HUD + 556, 12, Color(0.89, 0.98, 1.0, 0.6))
+		hud.draw_centered(self, font, sub, Config.HUD + 504, 15, Config.UI_MAGENTA)
+		hud.draw_centered(self, font, "SURVIVE THE SWARM / STEAL RESONANCE / BREAK THE CORE", Config.HUD + 538, 16, Color(Config.UI_TEXT, 0.84))
+		hud.draw_centered(self, font, "SPACE SHOT / B BOMB / E OVERDRIVE / T AI / P PAUSE / M MUTE", Config.HUD + 568, 12, Config.UI_TEXT_DIM)
 	elif state == GameState.VICTORY and ui_texture:
-		draw_texture_rect_region(ui_texture, Rect2(146, Config.HUD + 72, 668, 210), ui_regions.ending)
-		_draw_arcade_title(title, Config.HUD + 304.0, 44, Color("#dffcff"))
-		hud.draw_centered(self, font, "FINAL SCORE " + str(score).pad_zeros(7), Config.HUD + 356, 22, Color("#ffef8b"))
-		_draw_results_table(Config.HUD + 394.0)
-		hud.draw_centered(self, font, _control_mode_label(control_mode) + " / PRESS ENTER TO START", Config.HUD + 636, 18, Color("#ff7af0"))
+		_draw_terminal_panel(Rect2(118, Config.HUD + 48, 724, 214), Config.UI_CYAN, 0.58)
+		draw_texture_rect_region(ui_texture, Rect2(146, Config.HUD + 62, 668, 210), ui_regions.ending, Color(1, 1, 1, 0.88))
+		_draw_arcade_title(title, Config.HUD + 292.0, 44, Config.UI_TEXT)
+		hud.draw_centered(self, font, "FINAL SCORE " + str(score).pad_zeros(7), Config.HUD + 344, 22, Config.UI_AMBER)
+		_draw_results_table(Config.HUD + 384.0)
+		hud.draw_centered(self, font, _control_mode_label(control_mode) + " / ENTER TO REDEPLOY", Config.HUD + 640, 18, Config.UI_MAGENTA)
 	else:
-		_draw_arcade_title(title, Config.HUD + 214.0, 58, Color("#dffcff"))
-		hud.draw_centered(self, font, sub, Config.HUD + 292, 22, Color("#ff7af0"))
+		_draw_core_glyph(Vector2(Config.W * 0.5, Config.HUD + 168.0), 74.0, Config.UI_RED, state == GameState.GAME_OVER)
+		_draw_arcade_title(title, Config.HUD + 216.0, 58, Config.UI_TEXT)
+		hud.draw_centered(self, font, sub, Config.HUD + 292, 22, Config.UI_MAGENTA)
 		if state == GameState.PAUSED:
 			_draw_controls_panel(Config.HUD + 332.0)
 		elif state == GameState.GAME_OVER and not stage_results.is_empty():
 			_draw_results_table(Config.HUD + 334.0)
 		else:
-			hud.draw_centered(self, font, "STAGE GIMMICKS / BUILD CHOICES / OVERDRIVE CONVERT", Config.HUD + 340, 17, Color(0.89, 0.98, 1.0, 0.82))
+			hud.draw_centered(self, font, "CORE SIGNAL LOST / REBUILD AND REDEPLOY", Config.HUD + 340, 17, Color(Config.UI_TEXT, 0.82))
 
 
 func _draw_upgrade_overlay() -> void:
@@ -1437,8 +1517,9 @@ func _draw_upgrade_overlay() -> void:
 	if not stage_results.is_empty():
 		var last_result: Dictionary = stage_results[stage_results.size() - 1]
 		last_rank = "STAGE " + str(int(last_result.stage) + 1) + " RANK " + str(last_result.rank)
-	_draw_arcade_title("SYSTEM UPGRADE", Config.HUD + 126.0, 42, Color("#dffcff"))
-	hud.draw_centered(self, font, last_rank, Config.HUD + 178.0, 20, Color("#ffef8b"))
+	_draw_core_glyph(Vector2(Config.W * 0.5, Config.HUD + 102.0), 52.0, Config.UI_RED, true)
+	_draw_arcade_title("CORE MUTATION", Config.HUD + 138.0, 42, Config.UI_TEXT)
+	hud.draw_centered(self, font, last_rank, Config.HUD + 188.0, 20, Config.UI_AMBER)
 	var card_hitboxes := _upgrade_card_hitboxes()
 	for i in range(upgrade_options.size()):
 		var option: Dictionary = upgrade_options[i]
@@ -1448,32 +1529,32 @@ func _draw_upgrade_overlay() -> void:
 		var card_w := card.size.x
 		var card_h := card.size.y
 		var selected := i == upgrade_selected
-		var color := Color("#fff06a") if selected else Color("#49dfff")
-		draw_rect(Rect2(x, y, card_w, card_h), Color(0.02, 0.06, 0.12, 0.84))
-		draw_rect(Rect2(x, y, card_w, card_h), Color(color, 0.7 if selected else 0.34), false, 2.0)
+		var color := Config.UI_AMBER if selected else Config.UI_RED
+		_draw_terminal_panel(Rect2(x, y, card_w, card_h), color, 0.78, selected)
+		_draw_chrome_icon("warning" if selected else "core", Rect2(x + 18.0, y + 20.0, 42.0, 42.0), Color(1, 1, 1, 0.78))
+		_draw_centered_in_width("NODE " + str(i + 1), x + 10.0, 62.0, y + 86.0, 11, Config.UI_TEXT_DIM)
+		draw_string(font, Vector2(x + 76.0, y + 48.0), str(option.name), HORIZONTAL_ALIGNMENT_LEFT, -1, 19, color)
+		draw_string(font, Vector2(x + 76.0, y + 82.0), str(option.desc), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(Config.UI_TEXT, 0.82))
 		if selected:
-			draw_rect(Rect2(x + 5.0, y + 5.0, card_w - 10.0, card_h - 10.0), Color(color, 0.12))
-		_draw_centered_in_width(str(i + 1), x + 12.0, 24.0, y + 27.0, 14, Color("#fff06a"))
-		_draw_centered_in_width(str(option.name), x, card_w, y + 48.0, 19, color)
-		_draw_centered_in_width(str(option.desc), x, card_w, y + 90.0, 15, Color(0.89, 0.98, 1.0, 0.82))
-	hud.draw_centered(self, font, "1-3 / LEFT / RIGHT SELECT / TAP CARD", Config.HUD + 452.0, 18, Color("#ff7af0"))
+			draw_string(font, Vector2(x + 76.0, y + 120.0), "SELECTED MUTATION", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(Config.UI_AMBER, 0.92))
+	hud.draw_centered(self, font, "1-3 / LEFT / RIGHT / ENTER / TAP CARD", Config.HUD + 468.0, 18, Config.UI_MAGENTA)
 
 
 func _upgrade_card_hitboxes() -> Array[Rect2]:
-	var card_w := 250.0
-	var card_h := 148.0
-	var gap := 28.0
+	var card_w := 266.0
+	var card_h := 164.0
+	var gap := 22.0
 	var start_x := (Config.W - card_w * 3.0 - gap * 2.0) / 2.0
 	var cards: Array[Rect2] = []
 	for i in range(upgrade_options.size()):
-		cards.append(Rect2(start_x + float(i) * (card_w + gap), Config.HUD + 238.0, card_w, card_h))
+		cards.append(Rect2(start_x + float(i) * (card_w + gap), Config.HUD + 246.0, card_w, card_h))
 	return cards
 
 
 func _draw_controls_panel(y: float) -> void:
-	var rect := Rect2(284.0, y, 392.0, 210.0)
-	draw_rect(rect, Color(0.02, 0.06, 0.12, 0.84))
-	draw_rect(rect, Color(0.33, 0.91, 1.0, 0.34), false, 1.0)
+	var rect := Rect2(260.0, y, 440.0, 226.0)
+	_draw_terminal_panel(rect, Config.UI_CYAN, 0.78)
+	draw_string(font, rect.position + Vector2(34.0, 36.0), "CONTROL CHANNELS", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Config.UI_CYAN)
 	var rows := [
 		["MOVE", "WASD / ARROWS"],
 		["SHOT", "SPACE"],
@@ -1484,9 +1565,9 @@ func _draw_controls_panel(y: float) -> void:
 		["MUTE", "M"],
 	]
 	for i in range(rows.size()):
-		var row_y := y + 34.0 + float(i) * 24.0
-		draw_string(font, Vector2(rect.position.x + 34.0, row_y), rows[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#72eaff"))
-		draw_string(font, Vector2(rect.position.x + 170.0, row_y), rows[i][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.89, 0.98, 1.0, 0.82))
+		var row_y := y + 66.0 + float(i) * 22.0
+		draw_string(font, Vector2(rect.position.x + 34.0, row_y), rows[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Config.UI_AMBER if i == 3 else Config.UI_CYAN)
+		draw_string(font, Vector2(rect.position.x + 184.0, row_y), rows[i][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(Config.UI_TEXT, 0.82))
 
 
 func _draw_centered_in_width(text: String, x: float, width: float, y: float, size: int, color: Color) -> void:
@@ -1499,72 +1580,79 @@ func _draw_results_table(y: float) -> void:
 	var row_h := 31.0
 	var headers := ["STAGE", "SCORE", "CHAIN", "DMG", "BOMB", "RANK"]
 	var cols := [x, x + 230.0, x + 382.0, x + 500.0, x + 590.0, x + 704.0]
-	draw_rect(Rect2(x - 24.0, y - 28.0, 760.0, row_h * 6.0 + 34.0), Color(0.02, 0.06, 0.12, 0.72))
-	draw_rect(Rect2(x - 24.0, y - 28.0, 760.0, row_h * 6.0 + 34.0), Color(0.33, 0.91, 1.0, 0.28), false, 1.0)
+	_draw_terminal_panel(Rect2(x - 24.0, y - 28.0, 760.0, row_h * 6.0 + 40.0), Config.UI_RED, 0.74)
 	for i in range(headers.size()):
-		draw_string(font, Vector2(cols[i], y), headers[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.89, 0.98, 1.0, 0.66))
+		draw_string(font, Vector2(cols[i], y), headers[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Config.UI_TEXT_DIM)
 	for r in range(stage_results.size()):
 		var result: Dictionary = stage_results[r]
 		var row_y := y + 30.0 + float(r) * row_h
 		var rank_color := _rank_color(str(result.rank))
-		draw_string(font, Vector2(cols[0], row_y), str(result.name), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#dffcff"))
-		draw_string(font, Vector2(cols[1], row_y), str(result.score).pad_zeros(5), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#7df7ff"))
-		draw_string(font, Vector2(cols[2], row_y), str(result.chain), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ffef8b"))
+		if r % 2 == 0:
+			draw_rect(Rect2(x - 10.0, row_y - 16.0, 720.0, 23.0), Color(Config.UI_RED, 0.07))
+		draw_string(font, Vector2(cols[0], row_y), str(result.name), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_TEXT)
+		draw_string(font, Vector2(cols[1], row_y), str(result.score).pad_zeros(5), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_CYAN)
+		draw_string(font, Vector2(cols[2], row_y), str(result.chain), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
 		draw_string(font, Vector2(cols[3], row_y), str(result.damage), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ff9aa8"))
-		draw_string(font, Vector2(cols[4], row_y), str(result.bombs), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ff7af0"))
+		draw_string(font, Vector2(cols[4], row_y), str(result.bombs), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_MAGENTA)
 		draw_string(font, Vector2(cols[5], row_y), str(result.rank), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, rank_color)
 	if not stage_results.is_empty():
 		var last_result: Dictionary = stage_results[stage_results.size() - 1]
-		draw_string(font, Vector2(x, y + row_h * 6.0 + 24.0), str(last_result.get("tip", "NEXT: AIM FOR SSS")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#fff06a"))
+		draw_string(font, Vector2(x, y + row_h * 6.0 + 24.0), str(last_result.get("tip", "NEXT: AIM FOR SSS")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
 
 
 func _rank_color(rank: String) -> Color:
 	if rank in ["SSS", "SS"]:
-		return Color("#fff06a")
+		return Config.UI_AMBER
 	if rank == "S":
-		return Color("#ff7af0")
+		return Config.UI_MAGENTA
 	if rank == "A":
-		return Color("#72eaff")
+		return Config.UI_CYAN
 	if rank == "B":
-		return Color("#81ff88")
-	return Color(0.89, 0.98, 1.0, 0.72)
+		return Config.UI_GREEN
+	return Color(Config.UI_TEXT, 0.72)
 
 
 func _draw_control_mode_badge() -> void:
+	if state != GameState.PLAYING:
+		return
 	var label := _control_mode_label(control_mode)
-	var color := Color("#fff06a") if control_mode == ControlMode.AI else Color("#72eaff")
-	var x := 662.0
+	var color := Config.UI_AMBER if control_mode == ControlMode.AI else Config.UI_CYAN
+	var x := 858.0
 	var y := 42.0
 	var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
-	draw_rect(Rect2(x - 9.0, y - 15.0, text_size.x + 18.0, 20.0), Color(0.0, 0.0, 0.0, 0.34))
-	draw_rect(Rect2(x - 9.0, y - 15.0, text_size.x + 18.0, 20.0), Color(color, 0.12), false, 1.0)
+	var rect := Rect2(x - 9.0, y - 15.0, text_size.x + 18.0, 20.0)
+	draw_rect(rect, Color(Config.UI_PANEL_DARK, 0.52))
+	draw_rect(rect, Color(color, 0.18), false, 1.0)
 	draw_string(font, Vector2(x, y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
 
 
 func _draw_touch_controls() -> void:
 	var move_center := _touch_move_center()
-	var move_radius := 86.0
-	var stick_offset := touch_move_vector * 34.0
-	var base_color := Color(0.33, 0.91, 1.0, 0.2)
-	var active_color := Color("#fff06a") if touch_move_index != -1 else Color(0.89, 0.98, 1.0, 0.34)
-	draw_circle(move_center, move_radius, Color(0.02, 0.06, 0.12, 0.2))
-	draw_arc(move_center, move_radius, 0.0, TAU, 48, base_color, 3.0)
-	draw_circle(move_center + stick_offset, 24.0, Color(active_color, 0.34))
-	draw_arc(move_center + stick_offset, 24.0, 0.0, TAU, 32, active_color, 2.0)
+	var move_radius := Config.UI_TOUCH_STICK_RADIUS
+	var stick_offset := touch_move_vector * 38.0
+	var active_color := Config.UI_AMBER if touch_move_index != -1 else Color(Config.UI_TEXT, 0.38)
+	draw_circle(move_center, move_radius, Color(Config.UI_PANEL_DARK, 0.34))
+	draw_arc(move_center, move_radius, 0.0, TAU, 56, Color(Config.UI_RED, 0.36), 3.0)
+	draw_arc(move_center, move_radius - 15.0, -PI * 0.15, PI * 1.15, 44, Color(Config.UI_CYAN, 0.24), 2.0)
+	draw_line(move_center + Vector2(-move_radius + 16.0, 0), move_center + Vector2(move_radius - 16.0, 0), Color(Config.UI_RED, 0.12), 1.0)
+	draw_line(move_center + Vector2(0, -move_radius + 16.0), move_center + Vector2(0, move_radius - 16.0), Color(Config.UI_RED, 0.12), 1.0)
+	draw_circle(move_center + stick_offset, Config.UI_TOUCH_KNOB, Color(active_color, 0.34))
+	draw_arc(move_center + stick_offset, Config.UI_TOUCH_KNOB, 0.0, TAU, 32, active_color, 2.0)
 
 	var button_hitboxes := _touch_button_hitboxes()
-	_draw_touch_button(Rect2(button_hitboxes.shoot), "SHOT", Color("#49dfff"), bool(touch_button_pressed.shoot))
-	_draw_touch_button(Rect2(button_hitboxes.bomb), "BOMB", Color("#ff7af0"), bool(touch_button_pressed.bomb))
-	_draw_touch_button(Rect2(button_hitboxes.overdrive), "OVER", Color("#fff06a"), touch_overdrive_queued)
-	_draw_touch_button(_touch_pause_hitbox(), "PAUSE", Color(0.89, 0.98, 1.0, 0.68), state == GameState.PAUSED)
+	_draw_touch_button(Rect2(button_hitboxes.shoot), "SHOT", "shot", Config.UI_CYAN, bool(touch_button_pressed.shoot))
+	_draw_touch_button(Rect2(button_hitboxes.bomb), "BOMB", "bomb", Config.UI_MAGENTA, bool(touch_button_pressed.bomb))
+	_draw_touch_button(Rect2(button_hitboxes.overdrive), "OVER", "overdrive", Config.UI_AMBER, touch_overdrive_queued)
+	_draw_touch_button(_touch_pause_hitbox(), "PAUSE", "pause", Color(Config.UI_TEXT, 0.78), state == GameState.PAUSED)
 
 
-func _draw_touch_button(rect: Rect2, label: String, color: Color, active: bool) -> void:
-	var fill_alpha := 0.3 if active else 0.18
-	draw_circle(rect.get_center(), rect.size.x * 0.5, Color(0.02, 0.06, 0.12, 0.28))
-	draw_circle(rect.get_center(), rect.size.x * 0.5 - 5.0, Color(color, fill_alpha))
-	draw_arc(rect.get_center(), rect.size.x * 0.5 - 4.0, 0.0, TAU, 32, Color(color, 0.64 if active else 0.42), 2.0)
-	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.58, 12, Color(0.96, 1.0, 1.0, 0.82))
+func _draw_touch_button(rect: Rect2, label: String, icon_key: String, color: Color, active: bool) -> void:
+	var fill_alpha := 0.34 if active else 0.16
+	draw_circle(rect.get_center(), rect.size.x * 0.5, Color(Config.UI_PANEL_DARK, 0.36))
+	draw_circle(rect.get_center(), rect.size.x * 0.5 - 6.0, Color(color, fill_alpha))
+	draw_arc(rect.get_center(), rect.size.x * 0.5 - 4.0, 0.0, TAU, 40, Color(color, 0.78 if active else 0.46), 3.0 if active else 2.0)
+	_draw_chrome_icon(icon_key, Rect2(rect.get_center().x - rect.size.x * 0.24, rect.get_center().y - rect.size.y * 0.3, rect.size.x * 0.48, rect.size.y * 0.48), Color(1, 1, 1, 0.82))
+	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.74, 12, Color(0.98, 1.0, 1.0, 0.86))
 
 
 func _should_draw_touch_controls() -> bool:
@@ -1586,84 +1674,76 @@ func _detect_touch_controls_available() -> bool:
 
 
 func _touch_move_center() -> Vector2:
-	return Vector2(118.0, Config.H - 112.0)
+	return Vector2(124.0, Config.H - 118.0)
 
 
 func _touch_move_hitbox() -> Rect2:
-	return Rect2(_touch_move_center() - Vector2(104.0, 104.0), Vector2(208.0, 208.0))
+	return Rect2(_touch_move_center() - Vector2(Config.UI_TOUCH_STICK_HIT * 0.5, Config.UI_TOUCH_STICK_HIT * 0.5), Vector2(Config.UI_TOUCH_STICK_HIT, Config.UI_TOUCH_STICK_HIT))
 
 
 func _touch_button_hitboxes() -> Dictionary:
 	return {
-		"shoot": Rect2(Config.W - 164.0, Config.H - 184.0, 104.0, 104.0),
-		"bomb": Rect2(Config.W - 278.0, Config.H - 142.0, 78.0, 78.0),
-		"overdrive": Rect2(Config.W - 374.0, Config.H - 122.0, 72.0, 72.0),
+		"shoot": Rect2(Config.W - 174.0, Config.H - 194.0, Config.UI_TOUCH_SHOT_SIZE, Config.UI_TOUCH_SHOT_SIZE),
+		"bomb": Rect2(Config.W - 288.0, Config.H - 148.0, Config.UI_TOUCH_BOMB_SIZE, Config.UI_TOUCH_BOMB_SIZE),
+		"overdrive": Rect2(Config.W - 394.0, Config.H - 134.0, Config.UI_TOUCH_OVERDRIVE_SIZE, Config.UI_TOUCH_OVERDRIVE_SIZE),
 	}
 
 
 func _touch_pause_hitbox() -> Rect2:
-	return Rect2(Config.W - 76.0, Config.HUD + 10.0, 58.0, 58.0)
+	return Rect2(Config.W - 86.0, Config.HUD + 12.0, Config.UI_TOUCH_PAUSE_SIZE, Config.UI_TOUCH_PAUSE_SIZE)
 
 
 func _draw_ai_rival() -> void:
 	if state != GameState.PLAYING:
 		return
 	var label := "AI RIVAL " + str(ai_rival_score).pad_zeros(7)
-	var color := Color("#fff06a") if ai_rival_score > score else Color(0.89, 0.98, 1.0, 0.62)
-	draw_string(font, Vector2(662.0, 64.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
+	var color := Config.UI_AMBER if ai_rival_score > score else Color(Config.UI_TEXT, 0.62)
+	draw_string(font, Vector2(654.0, 66.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
 
 
 func _draw_title_mode_select(y: float) -> void:
 	var manual := "MANUAL"
 	var ai := "AI PILOT"
-	var manual_color := Color("#fff06a") if selected_control_mode == ControlMode.MANUAL else Color(0.89, 0.98, 1.0, 0.56)
-	var ai_color := Color("#fff06a") if selected_control_mode == ControlMode.AI else Color(0.89, 0.98, 1.0, 0.56)
-	var manual_text := "< " + manual + " >" if selected_control_mode == ControlMode.MANUAL else manual
-	var ai_text := "< " + ai + " >" if selected_control_mode == ControlMode.AI else ai
+	var manual_color := Config.UI_AMBER if selected_control_mode == ControlMode.MANUAL else Color(Config.UI_TEXT, 0.58)
+	var ai_color := Config.UI_AMBER if selected_control_mode == ControlMode.AI else Color(Config.UI_TEXT, 0.58)
+	var manual_text := manual
+	var ai_text := ai
 	var positions := _title_mode_text_positions(y, manual_text, ai_text)
 	var hitboxes := _title_mode_hitboxes(y)
 	_draw_title_mode_button(Rect2(hitboxes.manual), selected_control_mode == ControlMode.MANUAL, manual_color)
 	_draw_title_mode_button(Rect2(hitboxes.ai), selected_control_mode == ControlMode.AI, ai_color)
 	draw_string(font, positions.manual, manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, manual_color)
 	draw_string(font, positions.ai, ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ai_color)
-	hud.draw_centered(self, font, "CLICK OR LEFT / RIGHT SELECT", y + 46.0, 14, Color(0.89, 0.98, 1.0, 0.66))
+	hud.draw_centered(self, font, "CLICK OR LEFT / RIGHT SELECT CONTROL CHANNEL", y + 54.0, 14, Config.UI_TEXT_DIM)
 
 
 func _draw_title_start_button() -> void:
 	var rect := _title_start_hitbox()
-	var color := Color("#ff7af0")
-	draw_rect(rect, Color(0.02, 0.06, 0.12, 0.62))
-	draw_rect(rect, Color(color, 0.58), false, 2.0)
-	draw_rect(rect.grow(-5.0), Color(color, 0.14))
-	_draw_centered_in_width("START", rect.position.x, rect.size.x, rect.position.y + 31.0, 24, Color("#fff6ff"))
-	_draw_centered_in_width(_control_mode_label(selected_control_mode), rect.position.x, rect.size.x, rect.position.y + 56.0, 13, Color(0.89, 0.98, 1.0, 0.76))
+	_draw_terminal_button(rect, "START", _control_mode_label(selected_control_mode) + " DEPLOYMENT", Config.UI_MAGENTA, true)
 
 
 func _title_start_hitbox() -> Rect2:
-	return Rect2((Config.W - 216.0) * 0.5, Config.HUD + 394.0, 216.0, 72.0)
+	return Rect2((Config.W - 256.0) * 0.5, Config.HUD + 414.0, 256.0, 78.0)
 
 
 func _draw_title_mode_button(rect: Rect2, selected: bool, color: Color) -> void:
-	draw_rect(rect, Color(0.02, 0.06, 0.12, 0.44))
-	draw_rect(rect, Color(color, 0.42 if selected else 0.18), false, 2.0)
-	if selected:
-		draw_rect(rect.grow(-4.0), Color(color, 0.12))
+	_draw_terminal_panel(rect, color, 0.62, selected)
 
 
 func _title_mode_hitboxes(y: float) -> Dictionary:
-	var manual_text := "< MANUAL >" if selected_control_mode == ControlMode.MANUAL else "MANUAL"
-	var ai_text := "< AI PILOT >" if selected_control_mode == ControlMode.AI else "AI PILOT"
+	var manual_text := "MANUAL"
+	var ai_text := "AI PILOT"
 	var positions := _title_mode_text_positions(y, manual_text, ai_text)
 	var manual_size := font.get_string_size(manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
 	var ai_size := font.get_string_size(ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
 	return {
-		"manual": Rect2(positions.manual.x - 18.0, y - 28.0, manual_size.x + 36.0, 42.0),
-		"ai": Rect2(positions.ai.x - 18.0, y - 28.0, ai_size.x + 36.0, 42.0),
+		"manual": Rect2(positions.manual.x - 26.0, y - 32.0, manual_size.x + 52.0, 52.0),
+		"ai": Rect2(positions.ai.x - 26.0, y - 32.0, ai_size.x + 52.0, 52.0),
 	}
 
 
 func _title_mode_text_positions(y: float, manual_text: String, ai_text: String) -> Dictionary:
-	var gap := 58.0
+	var gap := 84.0
 	var manual_size := font.get_string_size(manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
 	var ai_size := font.get_string_size(ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
 	var total_width := manual_size.x + gap + ai_size.x
@@ -1682,24 +1762,23 @@ func _draw_stage_banner(text: String, y: float, alpha: float) -> void:
 	var size := 30
 	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 	var x := (Config.W - text_size.x) / 2.0
+	var panel := Rect2((Config.W - 520.0) * 0.5, y - 48.0, 520.0, 72.0)
+	_draw_terminal_panel(panel, Config.UI_RED, 0.42 * alpha, true)
 	if ui_texture:
-		draw_texture_rect_region(ui_texture, Rect2(250, y - 45.0, 460, 66), ui_regions.banner, Color(1, 1, 1, alpha))
-	else:
-		var panel := Rect2(x - 34.0, y - 28.0, text_size.x + 68.0, 46.0)
-		draw_rect(panel, Color(0.02, 0.06, 0.12, 0.42 * alpha))
-		draw_line(panel.position + Vector2(0, 2), panel.position + Vector2(panel.size.x, 2), Color(0.33, 0.91, 1.0, 0.65 * alpha), 2.0)
-		draw_line(panel.position + Vector2(0, panel.size.y - 2), panel.position + Vector2(panel.size.x, panel.size.y - 2), Color(1.0, 0.48, 0.94, 0.65 * alpha), 2.0)
+		draw_texture_rect_region(ui_texture, Rect2(250, y - 45.0, 460, 66), ui_regions.banner, Color(1, 1, 1, alpha * 0.46))
 	draw_string(font, Vector2(x + 2.0, y + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.62 * alpha))
-	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.88, 1.0, 1.0, alpha))
+	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_TEXT, alpha))
 
 
 func _draw_arcade_title(text: String, y: float, size: int, color: Color) -> void:
 	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 	var x := (Config.W - text_size.x) / 2.0
 	draw_string(font, Vector2(x + 3.0, y + 3.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.0, 0.0, 0.0, 0.72))
+	draw_string(font, Vector2(x + 1.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_RED, 0.42))
 	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
-	draw_line(Vector2(x - 34.0, y + 10.0), Vector2(x - 8.0, y + 10.0), Color("#ff7af0"), 3.0)
-	draw_line(Vector2(x + text_size.x + 8.0, y + 10.0), Vector2(x + text_size.x + 34.0, y + 10.0), Color("#ff7af0"), 3.0)
+	draw_line(Vector2(x - 42.0, y + 10.0), Vector2(x - 10.0, y + 10.0), Config.UI_RED, 3.0)
+	draw_line(Vector2(x + text_size.x + 10.0, y + 10.0), Vector2(x + text_size.x + 42.0, y + 10.0), Config.UI_RED, 3.0)
+	draw_line(Vector2(x - 24.0, y + 17.0), Vector2(x + text_size.x + 24.0, y + 17.0), Color(Config.UI_CYAN, 0.16), 1.0)
 
 
 func _distance(a: Dictionary, b: Dictionary) -> float:
