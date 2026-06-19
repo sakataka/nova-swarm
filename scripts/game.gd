@@ -37,6 +37,14 @@ var _stage_start_time := 0.0
 var _stage_damage := 0
 var _stage_bombs_used := 0
 var _stage_max_combo := 0
+var touch_controls_available := false
+var touch_controls_forced := false
+var touch_move_index := -1
+var touch_move_origin := Vector2.ZERO
+var touch_move_vector := Vector2.ZERO
+var touch_button_indices := {"shoot": -1, "bomb": -1, "overdrive": -1}
+var touch_button_pressed := {"shoot": false, "bomb": false}
+var touch_overdrive_queued := false
 
 var player = PlayerScript.new()
 var projectiles = ProjectileManagerScript.new()
@@ -80,6 +88,7 @@ func _ready() -> void:
 	randomize()
 	_setup_native_window()
 	_setup_runtime_models()
+	touch_controls_available = _detect_touch_controls_available()
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	font = ThemeDB.fallback_font
 	sprite_texture = _load_sprite_texture()
@@ -185,6 +194,10 @@ func _update_feedback(dt: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _handle_title_pointer_input(event):
 		get_viewport().set_input_as_handled()
+	elif _handle_upgrade_pointer_input(event):
+		get_viewport().set_input_as_handled()
+	elif _handle_touch_controls_input(event):
+		get_viewport().set_input_as_handled()
 	elif state == GameState.TITLE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
 		_toggle_selected_control_mode()
 		get_viewport().set_input_as_handled()
@@ -218,12 +231,100 @@ func _unhandled_input(event: InputEvent) -> void:
 func _handle_title_pointer_input(event: InputEvent) -> bool:
 	if state != GameState.TITLE:
 		return false
-	if not (event is InputEventMouseButton):
+	var position: Variant = _pointer_press_position(event)
+	if position == null:
 		return false
-	var mouse_event := event as InputEventMouseButton
-	if not mouse_event.pressed or mouse_event.button_index != MOUSE_BUTTON_LEFT:
+	return _select_title_mode_at(position)
+
+
+func _handle_upgrade_pointer_input(event: InputEvent) -> bool:
+	if state != GameState.UPGRADE:
 		return false
-	return _select_title_mode_at(mouse_event.position)
+	var position: Variant = _pointer_press_position(event)
+	if position == null:
+		return false
+	var card_hitboxes := _upgrade_card_hitboxes()
+	for i in range(card_hitboxes.size()):
+		if Rect2(card_hitboxes[i]).has_point(position):
+			upgrade_selected = i
+			_apply_selected_upgrade()
+			return true
+	return false
+
+
+func _pointer_press_position(event: InputEvent) -> Variant:
+	if event is InputEventMouseButton:
+		var mouse_event := event as InputEventMouseButton
+		if mouse_event.pressed and mouse_event.button_index == MOUSE_BUTTON_LEFT:
+			return mouse_event.position
+	elif event is InputEventScreenTouch:
+		var touch_event := event as InputEventScreenTouch
+		if touch_event.pressed:
+			return touch_event.position
+	return null
+
+
+func _handle_touch_controls_input(event: InputEvent) -> bool:
+	if not _touch_controls_enabled():
+		return false
+	if event is InputEventScreenTouch:
+		var touch_event := event as InputEventScreenTouch
+		if touch_event.pressed:
+			return _begin_touch_control(touch_event.index, touch_event.position)
+		return _end_touch_control(touch_event.index)
+	if event is InputEventScreenDrag:
+		var drag_event := event as InputEventScreenDrag
+		if drag_event.index == touch_move_index:
+			touch_move_vector = ((drag_event.position - touch_move_origin) / 62.0).limit_length(1.0)
+			return true
+	return false
+
+
+func _begin_touch_control(index: int, position: Vector2) -> bool:
+	if _touch_pause_hitbox().has_point(position):
+		if state == GameState.PLAYING:
+			state = GameState.PAUSED
+			audio_manager.set_music_ducked(true)
+		elif state == GameState.PAUSED:
+			state = GameState.PLAYING
+			audio_manager.set_music_ducked(false)
+		return true
+	if state != GameState.PLAYING:
+		return false
+
+	var button_hitboxes := _touch_button_hitboxes()
+	for action in ["shoot", "bomb", "overdrive"]:
+		if Rect2(button_hitboxes[action]).has_point(position):
+			touch_button_indices[action] = index
+			if action == "overdrive":
+				touch_overdrive_queued = true
+			else:
+				touch_button_pressed[action] = true
+			return true
+
+	if _touch_move_hitbox().has_point(position):
+		touch_move_index = index
+		touch_move_origin = position
+		touch_move_vector = Vector2.ZERO
+		return true
+	return false
+
+
+func _end_touch_control(index: int) -> bool:
+	var handled := false
+	if index == touch_move_index:
+		touch_move_index = -1
+		touch_move_origin = Vector2.ZERO
+		touch_move_vector = Vector2.ZERO
+		handled = true
+	for action in touch_button_indices.keys():
+		if int(touch_button_indices[action]) != index:
+			continue
+		touch_button_indices[action] = -1
+		if touch_button_pressed.has(action):
+			touch_button_pressed[action] = false
+		handled = true
+	return handled
 
 
 func _select_title_mode_at(position: Vector2) -> bool:
@@ -376,12 +477,27 @@ func _update_overdrive_feedback() -> void:
 func _read_player_command() -> Dictionary:
 	if control_mode == ControlMode.AI:
 		return ai_pilot.get_command(player, swarm.enemies, boss_controller.boss, projectiles.bullets, items)
+	var touch_command := _read_touch_command()
 	return {
 		"move_axis": Input.get_axis("move_left", "move_right"),
-		"move_vector": Input.get_vector("move_left", "move_right", "move_up", "move_down"),
-		"shoot": Input.is_action_pressed("shoot"),
-		"bomb": Input.is_action_pressed("bomb"),
-		"overdrive": Input.is_action_just_pressed("overdrive"),
+		"move_vector": touch_command.move_vector if touch_command.active else Input.get_vector("move_left", "move_right", "move_up", "move_down"),
+		"shoot": Input.is_action_pressed("shoot") or bool(touch_command.shoot),
+		"bomb": Input.is_action_pressed("bomb") or bool(touch_command.bomb),
+		"overdrive": Input.is_action_just_pressed("overdrive") or bool(touch_command.overdrive),
+	}
+
+
+func _read_touch_command() -> Dictionary:
+	if not _touch_controls_enabled() or state != GameState.PLAYING:
+		return {"active": false, "move_vector": Vector2.ZERO, "shoot": false, "bomb": false, "overdrive": false}
+	var overdrive_pressed := touch_overdrive_queued
+	touch_overdrive_queued = false
+	return {
+		"active": touch_move_index != -1 or bool(touch_button_pressed.shoot) or bool(touch_button_pressed.bomb) or overdrive_pressed,
+		"move_vector": touch_move_vector,
+		"shoot": bool(touch_button_pressed.shoot),
+		"bomb": bool(touch_button_pressed.bomb),
+		"overdrive": overdrive_pressed,
 	}
 
 
@@ -950,6 +1066,8 @@ func _draw() -> void:
 		_draw_stage_banner(Config.STAGES[stage].name, Config.HUD + 118.0, alpha)
 	if state != GameState.PLAYING:
 		_draw_overlay()
+	if _should_draw_touch_controls():
+		_draw_touch_controls()
 
 
 func _draw_background() -> void:
@@ -1321,14 +1439,14 @@ func _draw_upgrade_overlay() -> void:
 		last_rank = "STAGE " + str(int(last_result.stage) + 1) + " RANK " + str(last_result.rank)
 	_draw_arcade_title("SYSTEM UPGRADE", Config.HUD + 126.0, 42, Color("#dffcff"))
 	hud.draw_centered(self, font, last_rank, Config.HUD + 178.0, 20, Color("#ffef8b"))
-	var card_w := 250.0
-	var card_h := 148.0
-	var gap := 28.0
-	var start_x := (Config.W - card_w * 3.0 - gap * 2.0) / 2.0
+	var card_hitboxes := _upgrade_card_hitboxes()
 	for i in range(upgrade_options.size()):
 		var option: Dictionary = upgrade_options[i]
-		var x := start_x + float(i) * (card_w + gap)
-		var y := Config.HUD + 238.0
+		var card: Rect2 = card_hitboxes[i]
+		var x := card.position.x
+		var y := card.position.y
+		var card_w := card.size.x
+		var card_h := card.size.y
 		var selected := i == upgrade_selected
 		var color := Color("#fff06a") if selected else Color("#49dfff")
 		draw_rect(Rect2(x, y, card_w, card_h), Color(0.02, 0.06, 0.12, 0.84))
@@ -1338,7 +1456,18 @@ func _draw_upgrade_overlay() -> void:
 		_draw_centered_in_width(str(i + 1), x + 12.0, 24.0, y + 27.0, 14, Color("#fff06a"))
 		_draw_centered_in_width(str(option.name), x, card_w, y + 48.0, 19, color)
 		_draw_centered_in_width(str(option.desc), x, card_w, y + 90.0, 15, Color(0.89, 0.98, 1.0, 0.82))
-	hud.draw_centered(self, font, "1-3 / LEFT / RIGHT SELECT   ENTER CONFIRM", Config.HUD + 452.0, 18, Color("#ff7af0"))
+	hud.draw_centered(self, font, "1-3 / LEFT / RIGHT SELECT / TAP CARD", Config.HUD + 452.0, 18, Color("#ff7af0"))
+
+
+func _upgrade_card_hitboxes() -> Array[Rect2]:
+	var card_w := 250.0
+	var card_h := 148.0
+	var gap := 28.0
+	var start_x := (Config.W - card_w * 3.0 - gap * 2.0) / 2.0
+	var cards: Array[Rect2] = []
+	for i in range(upgrade_options.size()):
+		cards.append(Rect2(start_x + float(i) * (card_w + gap), Config.HUD + 238.0, card_w, card_h))
+	return cards
 
 
 func _draw_controls_panel(y: float) -> void:
@@ -1410,6 +1539,70 @@ func _draw_control_mode_badge() -> void:
 	draw_rect(Rect2(x - 9.0, y - 15.0, text_size.x + 18.0, 20.0), Color(0.0, 0.0, 0.0, 0.34))
 	draw_rect(Rect2(x - 9.0, y - 15.0, text_size.x + 18.0, 20.0), Color(color, 0.12), false, 1.0)
 	draw_string(font, Vector2(x, y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+
+
+func _draw_touch_controls() -> void:
+	var move_center := _touch_move_center()
+	var move_radius := 86.0
+	var stick_offset := touch_move_vector * 34.0
+	var base_color := Color(0.33, 0.91, 1.0, 0.2)
+	var active_color := Color("#fff06a") if touch_move_index != -1 else Color(0.89, 0.98, 1.0, 0.34)
+	draw_circle(move_center, move_radius, Color(0.02, 0.06, 0.12, 0.2))
+	draw_arc(move_center, move_radius, 0.0, TAU, 48, base_color, 3.0)
+	draw_circle(move_center + stick_offset, 24.0, Color(active_color, 0.34))
+	draw_arc(move_center + stick_offset, 24.0, 0.0, TAU, 32, active_color, 2.0)
+
+	var button_hitboxes := _touch_button_hitboxes()
+	_draw_touch_button(Rect2(button_hitboxes.shoot), "SHOT", Color("#49dfff"), bool(touch_button_pressed.shoot))
+	_draw_touch_button(Rect2(button_hitboxes.bomb), "BOMB", Color("#ff7af0"), bool(touch_button_pressed.bomb))
+	_draw_touch_button(Rect2(button_hitboxes.overdrive), "OVER", Color("#fff06a"), touch_overdrive_queued)
+	_draw_touch_button(_touch_pause_hitbox(), "PAUSE", Color(0.89, 0.98, 1.0, 0.68), state == GameState.PAUSED)
+
+
+func _draw_touch_button(rect: Rect2, label: String, color: Color, active: bool) -> void:
+	var fill_alpha := 0.3 if active else 0.18
+	draw_circle(rect.get_center(), rect.size.x * 0.5, Color(0.02, 0.06, 0.12, 0.28))
+	draw_circle(rect.get_center(), rect.size.x * 0.5 - 5.0, Color(color, fill_alpha))
+	draw_arc(rect.get_center(), rect.size.x * 0.5 - 4.0, 0.0, TAU, 32, Color(color, 0.64 if active else 0.42), 2.0)
+	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.58, 12, Color(0.96, 1.0, 1.0, 0.82))
+
+
+func _should_draw_touch_controls() -> bool:
+	return _touch_controls_enabled() and state in [GameState.PLAYING, GameState.PAUSED]
+
+
+func _touch_controls_enabled() -> bool:
+	return control_mode == ControlMode.MANUAL and (touch_controls_available or touch_controls_forced)
+
+
+func _detect_touch_controls_available() -> bool:
+	if OS.has_feature("mobile") or OS.get_name() in ["Android", "iOS"]:
+		return true
+	if not Engine.has_singleton("JavaScriptBridge"):
+		return false
+	var bridge: Object = Engine.get_singleton("JavaScriptBridge")
+	var max_touch_points: Variant = bridge.eval("navigator.maxTouchPoints || 0", true)
+	return typeof(max_touch_points) in [TYPE_INT, TYPE_FLOAT] and float(max_touch_points) > 0.0
+
+
+func _touch_move_center() -> Vector2:
+	return Vector2(118.0, Config.H - 112.0)
+
+
+func _touch_move_hitbox() -> Rect2:
+	return Rect2(_touch_move_center() - Vector2(104.0, 104.0), Vector2(208.0, 208.0))
+
+
+func _touch_button_hitboxes() -> Dictionary:
+	return {
+		"shoot": Rect2(Config.W - 164.0, Config.H - 184.0, 104.0, 104.0),
+		"bomb": Rect2(Config.W - 278.0, Config.H - 142.0, 78.0, 78.0),
+		"overdrive": Rect2(Config.W - 374.0, Config.H - 122.0, 72.0, 72.0),
+	}
+
+
+func _touch_pause_hitbox() -> Rect2:
+	return Rect2(Config.W - 76.0, Config.HUD + 10.0, 58.0, 58.0)
 
 
 func _draw_ai_rival() -> void:
@@ -1600,6 +1793,8 @@ func _parse_web_query() -> void:
 	var search: Variant = bridge.eval("window.location.search", true)
 	if typeof(search) != TYPE_STRING:
 		return
+	if search.find("touch=1") != -1:
+		touch_controls_forced = true
 	if search.find("autostart=1") == -1:
 		return
 	reset()

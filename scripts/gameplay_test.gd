@@ -22,6 +22,15 @@ func _initialize() -> void:
 	_assert(scene.selected_control_mode == scene.ControlMode.AI, "mouse selection switches title mode to ai")
 	_assert(scene._select_title_mode_at(Rect2(title_hitboxes.manual).get_center()), "title pointer selects manual")
 	_assert(scene.selected_control_mode == scene.ControlMode.MANUAL, "mouse selection switches title mode to manual")
+	var title_touch := InputEventScreenTouch.new()
+	title_touch.index = 1
+	title_touch.pressed = true
+	title_touch.position = Rect2(title_hitboxes.ai).get_center()
+	_assert(scene._handle_title_pointer_input(title_touch), "title touch selects ai")
+	_assert(scene.selected_control_mode == scene.ControlMode.AI, "touch selection switches title mode to ai")
+	title_touch.position = Rect2(title_hitboxes.manual).get_center()
+	_assert(scene._handle_title_pointer_input(title_touch), "title touch selects manual")
+	_assert(scene.selected_control_mode == scene.ControlMode.MANUAL, "touch selection switches title mode back to manual")
 	scene.selected_control_mode = scene.ControlMode.AI
 	_assert(scene._select_title_mode_at(scene._title_start_hitbox().get_center()), "title pointer starts game")
 	_assert(scene.state == scene.GameState.PLAYING, "mouse start enters play")
@@ -50,6 +59,47 @@ func _initialize() -> void:
 	_assert(scene.selected_control_mode == scene.ControlMode.AI, "toggle keeps ai for next run")
 	scene._toggle_control_mode()
 	_assert(scene.control_mode == scene.ControlMode.MANUAL, "toggle switches play back to manual")
+
+	scene.touch_controls_forced = true
+	var move_touch := InputEventScreenTouch.new()
+	move_touch.index = 4
+	move_touch.pressed = true
+	move_touch.position = scene._touch_move_center()
+	_assert(scene._handle_touch_controls_input(move_touch), "touch move pad starts")
+	var move_drag := InputEventScreenDrag.new()
+	move_drag.index = 4
+	move_drag.position = scene._touch_move_center() + Vector2(52.0, -38.0)
+	_assert(scene._handle_touch_controls_input(move_drag), "touch move pad drags")
+	var touch_command: Dictionary = scene._read_player_command()
+	_assert(touch_command.move_vector.x > 0.3 and touch_command.move_vector.y < -0.2, "touch move vector feeds manual command")
+	var shoot_touch := InputEventScreenTouch.new()
+	shoot_touch.index = 5
+	shoot_touch.pressed = true
+	shoot_touch.position = Rect2(scene._touch_button_hitboxes().shoot).get_center()
+	_assert(scene._handle_touch_controls_input(shoot_touch), "touch shot button starts")
+	touch_command = scene._read_player_command()
+	_assert(touch_command.shoot, "touch shot feeds manual command")
+	var overdrive_touch := InputEventScreenTouch.new()
+	overdrive_touch.index = 6
+	overdrive_touch.pressed = true
+	overdrive_touch.position = Rect2(scene._touch_button_hitboxes().overdrive).get_center()
+	_assert(scene._handle_touch_controls_input(overdrive_touch), "touch overdrive button starts")
+	touch_command = scene._read_player_command()
+	_assert(touch_command.overdrive, "touch overdrive is queued once")
+	touch_command = scene._read_player_command()
+	_assert(not touch_command.overdrive, "touch overdrive queue is consumed")
+	var pause_touch := InputEventScreenTouch.new()
+	pause_touch.index = 7
+	pause_touch.pressed = true
+	pause_touch.position = scene._touch_pause_hitbox().get_center()
+	_assert(scene._handle_touch_controls_input(pause_touch), "touch pause button pauses")
+	_assert(scene.state == scene.GameState.PAUSED, "touch pause enters pause state")
+	_assert(scene._handle_touch_controls_input(pause_touch), "touch pause button resumes")
+	_assert(scene.state == scene.GameState.PLAYING, "touch pause resumes play")
+	move_touch.pressed = false
+	_assert(scene._handle_touch_controls_input(move_touch), "touch move pad releases")
+	shoot_touch.pressed = false
+	_assert(scene._handle_touch_controls_input(shoot_touch), "touch shot button releases")
 
 	scene.selected_control_mode = scene.ControlMode.AI
 	scene.reset()

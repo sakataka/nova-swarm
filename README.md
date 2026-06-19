@@ -1,6 +1,6 @@
 # Nova Swarm
 
-Godot 4.6 + GDScript で作るレトロアーケード調の2Dシューティングゲームです。Space Invaders / Galaxian 系の編隊移動、急降下、ボム、5ステージ構成、ボス戦をベースにしています。
+Godot 4.7 + GDScript で作るレトロアーケード調の2Dシューティングゲームです。Space Invaders / Galaxian 系の編隊移動、急降下、ボム、5ステージ構成、ボス戦をベースにしています。
 
 ## 起動
 
@@ -26,6 +26,7 @@ Godotエディタでこのフォルダを開き、実行します。
 | モード選択 | タイトル画面でクリック、または `A` / `D`・`←` / `→` |
 | 開始 / リスタート | タイトル画面の `START` をクリック、または `Enter` |
 | アップグレード選択 | `1` / `2` / `3` で直接選択、または `←` / `→` + `Enter` |
+| タッチ操作 | タッチ端末では左下スティック、右下 `SHOT` / `BOMB` / `OVER`、右上 `PAUSE` |
 
 ## 構成
 
@@ -89,6 +90,7 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 ## ゲーム品質改善
 
 - Input Map 経由の操作に変更し、キーボードとゲームパッド入力を扱いやすくしています。
+- Godot 4.7環境に更新し、iPhoneやWebのタッチ端末では画面上に仮想スティックとショット/ボム/Overdrive/ポーズボタンを出します。Web版は `?touch=1` でデスクトップ検証用に強制表示できます。
 - 自機は左右だけでなく上下にも移動でき、敵弾や急降下の避け方を2D空間で選べるようにしています。AI Pilotも2D移動候補から安全位置を選びます。
 - スコアチェイン、ノーミスステージボーナス、成績に応じた軽い難易度補正を追加しています。
 - 敵弾のかすり、連続撃破、ボスヒットで溜まるResonanceゲージと、満タン時に発動できるOverdriveを追加しています。
@@ -111,25 +113,25 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 スモークテスト:
 
 ```bash
-/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/smoke_test.gd
+/Applications/Godot.app/Contents/MacOS/Godot --display-driver headless --rendering-driver dummy --audio-driver Dummy --path . --script res://scripts/smoke_test.gd --log-file /private/tmp/nova-swarm-smoke.log
 ```
 
 ゲームプレイテスト:
 
 ```bash
-/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/gameplay_test.gd
+/Applications/Godot.app/Contents/MacOS/Godot --display-driver headless --rendering-driver dummy --audio-driver Dummy --path . --script res://scripts/gameplay_test.gd --log-file /private/tmp/nova-swarm-gameplay.log
 ```
 
 AIボス戦テスト:
 
 ```bash
-/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/ai_boss_stage5_test.gd
+/Applications/Godot.app/Contents/MacOS/Godot --display-driver headless --rendering-driver dummy --audio-driver Dummy --path . --script res://scripts/ai_boss_stage5_test.gd --log-file /private/tmp/nova-swarm-ai-boss.log
 ```
 
 AIシミュレーション:
 
 ```bash
-/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/ai_simulation_test.gd --seconds=75 --seed=20260501 --min-stage=2
+/Applications/Godot.app/Contents/MacOS/Godot --display-driver headless --rendering-driver dummy --audio-driver Dummy --path . --script res://scripts/ai_simulation_test.gd --log-file /private/tmp/nova-swarm-ai-sim.log -- --seconds=75 --seed=20260501 --min-stage=2
 ```
 
 `AI_SIM_RESULT` にステージ、スコア、残ライフ、被弾回数がJSONで出ます。AIの調整はこのコマンドを画面なしで回して確認できます。
@@ -146,7 +148,7 @@ stop_project
 
 ## Webエクスポート
 
-ローカルでWeb版を書き出すには、Godot 4.6.2 のExport Templatesが必要です。
+ローカルでWeb版を書き出すには、Godot 4.7 のExport Templatesが必要です。
 
 ```bash
 mkdir -p dist
@@ -164,6 +166,12 @@ python3 -m http.server 4177 --bind 127.0.0.1
 
 ```text
 http://127.0.0.1:4177/
+```
+
+タッチUIをデスクトップブラウザで強制表示する場合:
+
+```text
+http://127.0.0.1:4177/?touch=1
 ```
 
 ## GitHub Pages
