@@ -77,7 +77,10 @@ var title_deploy_texture: Texture2D
 var status_icons_texture: Texture2D
 var shield_fx_texture: Texture2D
 var hud_chassis_texture: Texture2D
+var overdrive_mote_texture: Texture2D
+var score_crystal_texture: Texture2D
 var font: Font
+var display_font: Font
 var overdrive_aura: CPUParticles2D
 var overdrive_burst: CPUParticles2D
 var sprites: Dictionary = Config.sprites()
@@ -106,11 +109,11 @@ func _ready() -> void:
 	_setup_runtime_models()
 	touch_controls_available = _detect_touch_controls_available()
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	font = ThemeDB.fallback_font
+	_setup_fonts()
 	sprite_texture = _load_sprite_texture()
 	background_texture = load("res://public/assets/renewal/background_atlas.png")
 	ui_texture = _load_imported_or_png_texture("res://public/assets/ui_atlas.png")
-	ui_chrome_texture = _load_png_texture("res://public/assets/ui_chrome.png")
+	ui_chrome_texture = _load_imported_or_png_texture("res://public/assets/ui_chrome.png")
 	commander_texture = _load_imported_or_png_texture("res://public/assets/commander.png")
 	commander_fx_texture = _load_imported_or_png_texture("res://public/assets/commander_fx.png")
 	rock_obstacle_texture = _load_imported_or_png_texture("res://public/assets/rock_obstacle.png")
@@ -127,6 +130,8 @@ func _ready() -> void:
 	status_icons_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/icons/sheet-transparent.png")
 	shield_fx_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/shield/sheet-transparent.png")
 	hud_chassis_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/hud/hud_chassis.png")
+	overdrive_mote_texture = _load_imported_or_png_texture("res://public/assets/overdrive_mote.png")
+	score_crystal_texture = _load_imported_or_png_texture("res://public/assets/score_crystal_atlas.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
 	_setup_overdrive_particles()
@@ -147,26 +152,51 @@ func _setup_runtime_models() -> void:
 	boss_controller.setup(Config.W, Config.HUD)
 
 
+func _setup_fonts() -> void:
+	var font_path := "res://public/assets/fonts/Oxanium-wght.ttf"
+	var base_font := load(font_path) as FontFile if ResourceLoader.exists(font_path) else null
+	if not base_font:
+		base_font = FontFile.new()
+	if base_font.data.is_empty() and base_font.load_dynamic_font(font_path) != OK:
+		font = ThemeDB.fallback_font
+		display_font = font
+		return
+	var ui_variation := FontVariation.new()
+	ui_variation.base_font = base_font
+	var weight_tag := TextServerManager.get_primary_interface().name_to_tag("wght")
+	ui_variation.variation_opentype = {weight_tag: 500}
+	ui_variation.variation_embolden = 0.12
+	font = ui_variation
+	var display_variation := FontVariation.new()
+	display_variation.base_font = base_font
+	display_variation.variation_opentype = {weight_tag: 700}
+	display_variation.variation_embolden = 0.42
+	display_font = display_variation
+
+
 func _setup_overdrive_particles() -> void:
 	overdrive_aura = CPUParticles2D.new()
 	overdrive_aura.name = "OverdriveAura"
-	overdrive_aura.amount = 42
-	overdrive_aura.lifetime = 0.5
+	overdrive_aura.amount = 24
+	overdrive_aura.lifetime = 0.72
 	overdrive_aura.local_coords = false
 	overdrive_aura.emitting = false
 	overdrive_aura.direction = Vector2(0, -1)
 	overdrive_aura.spread = 180.0
 	overdrive_aura.gravity = Vector2.ZERO
 	overdrive_aura.initial_velocity_min = 26.0
-	overdrive_aura.initial_velocity_max = 96.0
-	overdrive_aura.scale_amount_min = 1.4
-	overdrive_aura.scale_amount_max = 3.8
-	overdrive_aura.color = Color(1.0, 0.74, 0.2, 0.72)
+	overdrive_aura.initial_velocity_max = 82.0
+	overdrive_aura.scale_amount_min = 0.22
+	overdrive_aura.scale_amount_max = 0.52
+	overdrive_aura.angular_velocity_min = -160.0
+	overdrive_aura.angular_velocity_max = 160.0
+	overdrive_aura.color = Color(1.0, 1.0, 1.0, 0.78)
+	overdrive_aura.texture = overdrive_mote_texture
 	add_child(overdrive_aura)
 
 	overdrive_burst = CPUParticles2D.new()
 	overdrive_burst.name = "OverdriveBurst"
-	overdrive_burst.amount = 90
+	overdrive_burst.amount = 48
 	overdrive_burst.lifetime = 0.42
 	overdrive_burst.one_shot = true
 	overdrive_burst.explosiveness = 0.95
@@ -177,9 +207,12 @@ func _setup_overdrive_particles() -> void:
 	overdrive_burst.gravity = Vector2.ZERO
 	overdrive_burst.initial_velocity_min = 130.0
 	overdrive_burst.initial_velocity_max = 310.0
-	overdrive_burst.scale_amount_min = 2.0
-	overdrive_burst.scale_amount_max = 5.0
-	overdrive_burst.color = Color(1.0, 0.34, 0.92, 0.78)
+	overdrive_burst.scale_amount_min = 0.28
+	overdrive_burst.scale_amount_max = 0.72
+	overdrive_burst.angular_velocity_min = -240.0
+	overdrive_burst.angular_velocity_max = 240.0
+	overdrive_burst.color = Color(1.0, 0.82, 1.0, 0.84)
+	overdrive_burst.texture = overdrive_mote_texture
 	add_child(overdrive_burst)
 
 
@@ -347,6 +380,7 @@ func reset() -> void:
 	stage_transition_timer = 0.0
 	stage_results.clear()
 	control_mode = selected_control_mode
+	ai_pilot.reset()
 	player.reset_run(Config.W / 2.0, Config.PLAYER_Y)
 	state = GameState.PLAYING
 	audio_manager.set_music_overdriven(false)
@@ -1005,7 +1039,7 @@ func _draw() -> void:
 	_draw_playfield()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if state in [GameState.PLAYING, GameState.PAUSED]:
-		hud.draw_hud(self, font, score, stage, stage_wave, int(Config.STAGES[stage].get("waves", 1)), player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), player.chip_levels, player.chip_progress, audio_manager.muted, hud_chassis_texture, status_icons_texture)
+		hud.draw_hud(self, font, display_font, score, stage, stage_wave, int(Config.STAGES[stage].get("waves", 1)), player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), player.chip_levels, player.chip_progress, audio_manager.muted, hud_chassis_texture, status_icons_texture)
 	if flash > 0.0:
 		draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.34))
 	if stage_banner > 0.0 and state == GameState.PLAYING:
@@ -1265,8 +1299,21 @@ func _draw_stage_hazard(hazard: Dictionary) -> void:
 func _draw_score_crystal(crystal: Dictionary) -> void:
 	var center := Vector2(crystal.x, crystal.y)
 	var pulse := 0.5 + sin(crystal.t * 14.0) * 0.5
-	draw_circle(center, 14.0 + pulse * 4.0, Color(1.0, 0.94, 0.36, 0.18))
-	draw_rect(Rect2(center.x - 6.0, center.y - 6.0, 12.0, 12.0), Color("#fff06a"))
+	draw_circle(center, 15.0 + pulse * 4.0, Color(0.35, 0.9, 1.0, 0.15))
+	if score_crystal_texture:
+		var cell := float(score_crystal_texture.get_width()) / 2.0
+		var frame := int(crystal.t * 11.0) % 4
+		var region := Rect2(float(frame % 2) * cell, float(frame / 2) * cell, cell, cell)
+		var size := 34.0 + pulse * 4.0
+		draw_texture_rect_region(score_crystal_texture, Rect2(center.x - size * 0.5, center.y - size * 0.5, size, size), region, Color.WHITE)
+	else:
+		var points := PackedVector2Array([
+			center + Vector2(0.0, -10.0),
+			center + Vector2(7.0, 0.0),
+			center + Vector2(0.0, 10.0),
+			center + Vector2(-7.0, 0.0),
+		])
+		draw_colored_polygon(points, Color("#a9f7ff"))
 
 
 func _draw_bullet(bullet: Dictionary) -> void:
@@ -1378,10 +1425,9 @@ func _draw_infection_overlay() -> void:
 
 func _draw_terminal_panel(rect: Rect2, accent: Color, fill_alpha := Config.UI_PANEL_ALPHA, selected := false) -> void:
 	draw_rect(rect, Color(0.015, 0.055, 0.12, fill_alpha))
-	if title_controls_texture:
-		var cell := float(title_controls_texture.get_width()) / 2.0
-		var region := Rect2(0 if selected else cell, 0, cell, cell)
-		draw_texture_rect_region(title_controls_texture, rect, region, Color(1, 1, 1, 0.72 if selected else 0.54))
+	draw_rect(rect, Color(accent, 0.62 if selected else 0.38), false, 2.0)
+	draw_rect(rect.grow(-7.0), Color(accent, 0.22), false, 1.0)
+	_draw_corner_marks(rect.grow(-3.0), accent, selected)
 
 
 func _draw_corner_marks(rect: Rect2, accent: Color, selected: bool) -> void:
@@ -1424,6 +1470,7 @@ func _draw_terminal_button(rect: Rect2, label: String, sublabel: String, accent:
 func _draw_overlay() -> void:
 	if state == GameState.TITLE and title_background_texture:
 		draw_texture_rect(title_background_texture, Rect2(0, 0, Config.W, Config.H), false, Color.WHITE)
+		_draw_title_wordmark()
 		draw_rect(Rect2(0, Config.H - 118.0, Config.W, 118.0), Color(0.01, 0.035, 0.075, 0.58))
 		_draw_title_mode_select(0.0)
 		_draw_title_start_button()
@@ -1474,9 +1521,30 @@ func _draw_controls_panel(y: float) -> void:
 		draw_string(font, Vector2(rect.position.x + 184.0, row_y), rows[i][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(Config.UI_TEXT, 0.82))
 
 
+func _draw_title_wordmark() -> void:
+	_draw_title_line("NOVA", Rect2(190.0, 48.0, 580.0, 82.0), 78, 56, Color("#baf7ff"))
+	_draw_title_line("SWARM", Rect2(120.0, 126.0, 720.0, 104.0), 96, 68, Color("#f7fbff"))
+
+
+func _draw_title_line(text: String, rect: Rect2, preferred_size: int, minimum_size: int, color: Color) -> void:
+	var title_font := display_font if display_font else font
+	var size := preferred_size
+	while size > minimum_size and title_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > rect.size.x:
+		size -= 1
+	var text_size := title_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+	var position := Vector2(rect.position.x + (rect.size.x - text_size.x) * 0.5, rect.position.y + size)
+	draw_string(title_font, position + Vector2(5.0, 6.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.0, 0.03, 0.1, 0.92))
+	draw_string(title_font, position + Vector2(2.0, 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_CYAN, 0.72))
+	draw_string(title_font, position, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+
+
 func _draw_centered_in_width(text: String, x: float, width: float, y: float, size: int, color: Color) -> void:
-	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
-	draw_string(font, Vector2(x + (width - text_size.x) / 2.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+	var label_font := display_font if display_font else font
+	var fitted_size := size
+	while fitted_size > 8 and label_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fitted_size).x > width - 10.0:
+		fitted_size -= 1
+	var text_size := label_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fitted_size)
+	draw_string(label_font, Vector2(x + (width - text_size.x) / 2.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fitted_size, color)
 
 
 func _draw_results_table(y: float) -> void:
@@ -1484,7 +1552,7 @@ func _draw_results_table(y: float) -> void:
 	var row_h := 31.0
 	var headers := ["STAGE", "SCORE", "CHAIN", "DMG", "BOMB", "RANK"]
 	var cols := [x, x + 230.0, x + 382.0, x + 500.0, x + 590.0, x + 704.0]
-	_draw_terminal_panel(Rect2(x - 24.0, y - 28.0, 760.0, row_h * 6.0 + 40.0), Config.UI_RED, 0.74)
+	_draw_terminal_panel(Rect2(x - 24.0, y - 28.0, 760.0, row_h * 6.0 + 60.0), Config.UI_RED, 0.74)
 	for i in range(headers.size()):
 		draw_string(font, Vector2(cols[i], y), headers[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Config.UI_TEXT_DIM)
 	for r in range(stage_results.size()):
@@ -1646,22 +1714,24 @@ func _control_mode_label(mode: int) -> String:
 
 func _draw_stage_banner(text: String, y: float, alpha: float) -> void:
 	var size := 30
-	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+	var banner_font := display_font if display_font else font
+	var text_size := banner_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 	var x := (Config.W - text_size.x) / 2.0
 	var panel := Rect2((Config.W - 520.0) * 0.5, y - 48.0, 520.0, 72.0)
 	if title_controls_texture:
 		var cell := float(title_controls_texture.get_width()) / 2.0
 		draw_texture_rect_region(title_controls_texture, panel, Rect2(0, cell, cell, cell), Color(1, 1, 1, alpha * 0.84))
-	draw_string(font, Vector2(x + 2.0, y + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.62 * alpha))
-	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_TEXT, alpha))
+	draw_string(banner_font, Vector2(x + 2.0, y + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.62 * alpha))
+	draw_string(banner_font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_TEXT, alpha))
 
 
 func _draw_arcade_title(text: String, y: float, size: int, color: Color) -> void:
-	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+	var title_font := display_font if display_font else font
+	var text_size := title_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 	var x := (Config.W - text_size.x) / 2.0
-	draw_string(font, Vector2(x + 3.0, y + 3.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.0, 0.0, 0.0, 0.72))
-	draw_string(font, Vector2(x + 1.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_CYAN, 0.42))
-	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+	draw_string(title_font, Vector2(x + 3.0, y + 3.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.0, 0.0, 0.0, 0.72))
+	draw_string(title_font, Vector2(x + 1.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_CYAN, 0.42))
+	draw_string(title_font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 	draw_line(Vector2(x - 42.0, y + 10.0), Vector2(x - 10.0, y + 10.0), Config.UI_AMBER, 3.0)
 	draw_line(Vector2(x + text_size.x + 10.0, y + 10.0), Vector2(x + text_size.x + 42.0, y + 10.0), Config.UI_AMBER, 3.0)
 	draw_line(Vector2(x - 24.0, y + 17.0), Vector2(x + text_size.x + 24.0, y + 17.0), Color(Config.UI_CYAN, 0.16), 1.0)

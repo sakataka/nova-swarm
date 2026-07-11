@@ -51,9 +51,9 @@ const ENEMY_STATS := {
 	"armor": {"hp": 3, "score": 420, "size": 46.0, "color": Color("#8dff5d"), "role": "tank"},
 	"saucer": {"hp": 2, "score": 360, "size": 44.0, "color": Color("#ff57f0"), "role": "flanker"},
 	"commander": {"hp": 14, "score": 1600, "size": 64.0, "color": Color("#ff5ff0"), "role": "commander"},
-	"mid_lancer": {"hp": 250, "score": 5200, "size": 76.0, "color": Color("#ff5a7a"), "role": "midboss"},
-	"mid_orbit": {"hp": 280, "score": 5600, "size": 78.0, "color": Color("#a96cff"), "role": "midboss"},
-	"mid_anchor": {"hp": 330, "score": 6200, "size": 82.0, "color": Color("#ffb84d"), "role": "midboss"},
+	"mid_lancer": {"hp": 210, "score": 5200, "size": 76.0, "color": Color("#ff5a7a"), "role": "midboss"},
+	"mid_orbit": {"hp": 235, "score": 5600, "size": 78.0, "color": Color("#a96cff"), "role": "midboss"},
+	"mid_anchor": {"hp": 275, "score": 6200, "size": 82.0, "color": Color("#ffb84d"), "role": "midboss"},
 }
 
 const CHIP_TRACKS := {

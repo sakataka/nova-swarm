@@ -104,6 +104,9 @@ func _initialize() -> void:
 	scene.selected_control_mode = scene.ControlMode.AI
 	scene.reset()
 	_assert(scene.control_mode == scene.ControlMode.AI, "ai selection starts ai play")
+	_assert(scene.font != ThemeDB.fallback_font, "embedded Oxanium font replaces the system fallback")
+	_assert(scene.overdrive_mote_texture != null, "overdrive aura texture is loaded")
+	_assert(scene.score_crystal_texture != null, "score crystal atlas is loaded")
 	scene.projectiles.clear()
 	scene.player.shot_cd = 0.0
 	scene._update_game(1.0 / 60.0)
@@ -132,6 +135,33 @@ func _initialize() -> void:
 	scene.boss_controller.boss.x = scene.player.x
 	ai_command = scene.ai_pilot.get_command(scene.player, [], scene.boss_controller.boss, [], [])
 	_assert(ai_command.bomb, "ai uses bombs during pressured boss phases")
+
+	scene.ai_pilot.reset()
+	scene.load_stage(0)
+	scene.player.x = Config.W * 0.5
+	scene.player.y = Config.PLAYER_Y
+	var power_item := {"kind": "power", "x": scene.player.x + 150.0, "y": scene.player.y - 130.0, "vy": 0.0, "t": 0.0}
+	ai_command = scene.ai_pilot.get_command(scene.player, scene.swarm.enemies, {}, [], [power_item])
+	_assert(ai_command.move_axis > 0.0, "ai safely pursues combat growth chips")
+
+	scene.ai_pilot.reset()
+	var diving_enemy := {"id": 991, "kind": "diver", "x": scene.player.x, "y": scene.player.y - 170.0, "hp": 2, "max_hp": 2, "size": 44.0, "dive": 1.0, "t": 0.4}
+	ai_command = scene.ai_pilot.get_command(scene.player, [diving_enemy], {}, [], [])
+	_assert(Vector2(ai_command.move_vector).length() > 0.35, "ai escapes a predicted diving-enemy path")
+
+	scene.ai_pilot.reset()
+	scene.player.bombs = 1
+	scene.player.bomb_cd = 0.0
+	var moderate_bullet := {"x": scene.player.x + 82.0, "y": scene.player.y - 210.0, "vx": 0.0, "vy": 220.0, "enemy": true, "r": 5.0, "power": 1, "color": Color.WHITE, "sprite": "enemy"}
+	ai_command = scene.ai_pilot.get_command(scene.player, scene.swarm.enemies, {}, [moderate_bullet], [])
+	_assert(not ai_command.bomb, "ai preserves its last bomb when a normal-wave escape lane exists")
+
+	scene.ai_pilot.reset()
+	var lethal_bullets := []
+	for offset in [-24.0, 0.0, 24.0]:
+		lethal_bullets.append({"x": scene.player.x + offset, "y": scene.player.y - 58.0, "vx": 0.0, "vy": 260.0, "enemy": true, "r": 8.0, "power": 1, "color": Color.WHITE, "sprite": "enemy"})
+	ai_command = scene.ai_pilot.get_command(scene.player, scene.swarm.enemies, {}, lethal_bullets, [])
+	_assert(ai_command.bomb, "ai spends its last bomb when immediate normal-wave pressure is lethal")
 
 	var bombs_before: int = scene.player.bombs
 	scene._use_bomb()

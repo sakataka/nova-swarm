@@ -79,7 +79,8 @@ func _spawn_midbosses(count: int, enemy_stats: Dictionary, difficulty: float) ->
 		var kind: String = kinds[i]
 		var stats: Dictionary = enemy_stats[kind]
 		var x := width * (float(i + 1) / float(count + 1))
-		var hp := int(round(float(stats.hp) * maxf(1.0, difficulty * 0.92)))
+		var hp_scale := 1.0 + maxf(0.0, difficulty - 1.0) * 0.55
+		var hp := int(round(float(stats.hp) * hp_scale))
 		enemies.append({
 			"id": next_id,
 			"kind": kind,

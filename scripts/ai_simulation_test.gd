@@ -12,6 +12,8 @@ func _initialize() -> void:
 	var scene: Node = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	await process_frame
+	scene.set_process(false)
+	scene.set_physics_process(false)
 
 	seed(options.seed)
 	scene.selected_control_mode = scene.ControlMode.AI
@@ -64,7 +66,7 @@ func _initialize() -> void:
 
 func _read_options() -> Dictionary:
 	var options := {"seconds": DEFAULT_SECONDS, "seed": DEFAULT_SEED, "min_stage": DEFAULT_MIN_STAGE, "start_stage": DEFAULT_START_STAGE - 1}
-	for arg in OS.get_cmdline_args():
+	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--seconds="):
 			options.seconds = maxf(1.0, float(arg.trim_prefix("--seconds=")))
 		elif arg.begins_with("--seed="):
