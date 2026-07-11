@@ -195,7 +195,7 @@ http://127.0.0.1:4177/?touch=1
 
 ## GitHub Pages
 
-`main` ブランチにpushすると、GitHub ActionsでGodot Webエクスポートを実行し、`dist`相当の成果物をGitHub Pagesにデプロイします。
+`main` ブランチにpushすると、GitHub ActionsでGodot 4.7のWebエクスポートを実行し、`dist`相当の成果物をGitHub Pagesにデプロイします。
 
 公開URL:
 
