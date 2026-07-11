@@ -19,8 +19,8 @@ func spawn() -> void:
 	boss = {
 		"x": width / 2.0,
 		"y": hud_y + 210.0,
-		"hp": 4500,
-		"max_hp": 4500,
+		"hp": 3000,
+		"max_hp": 3000,
 		"t": 0.0,
 		"phase": 0,
 		"shoot": 0.5,

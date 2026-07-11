@@ -36,11 +36,11 @@ const UI_TOUCH_STICK_HIT := 222.0
 const UI_TOUCH_KNOB := 28.0
 
 const STAGES := [
-	{"name": "AURORA GATE", "bg": 0, "rows": 3, "cols": 7, "waves": 9, "midbosses": 0, "kinds": ["bug", "bug", "diver"], "speed": 22.0, "fire": 0.54, "dive": 0.38, "boss": false, "stars": 0.86, "scroll": 0.82, "tint": Color("#79dfff")},
-	{"name": "VIOLET FRONT", "bg": 1, "rows": 3, "cols": 8, "waves": 10, "midbosses": 0, "kinds": ["bug", "zig", "diver"], "speed": 29.0, "fire": 0.72, "dive": 0.62, "boss": false, "stars": 0.95, "scroll": 0.96, "tint": Color("#aa8cff")},
-	{"name": "TWIN COMET", "bg": 1, "rows": 3, "cols": 7, "waves": 7, "midbosses": 2, "kinds": ["zig", "diver", "armor"], "speed": 33.0, "fire": 0.84, "dive": 0.78, "boss": false, "stars": 1.02, "scroll": 1.04, "tint": Color("#ff79cb")},
-	{"name": "SOLAR BREAK", "bg": 2, "rows": 4, "cols": 8, "waves": 8, "midbosses": 0, "kinds": ["armor", "saucer", "zig", "diver"], "speed": 36.0, "fire": 0.94, "dive": 0.92, "boss": false, "stars": 1.08, "scroll": 1.12, "tint": Color("#ffd07a")},
-	{"name": "TRINITY SIEGE", "bg": 3, "rows": 4, "cols": 8, "waves": 8, "midbosses": 3, "kinds": ["saucer", "zig", "armor", "diver"], "speed": 39.0, "fire": 1.06, "dive": 1.08, "boss": false, "stars": 1.16, "scroll": 1.22, "tint": Color("#ff6f9e")},
+	{"name": "AURORA GATE", "bg": 0, "rows": 3, "cols": 7, "waves": 5, "midbosses": 0, "kinds": ["bug", "bug", "diver"], "speed": 22.0, "fire": 0.54, "dive": 0.38, "boss": false, "stars": 0.86, "scroll": 0.82, "tint": Color("#79dfff")},
+	{"name": "VIOLET FRONT", "bg": 1, "rows": 3, "cols": 8, "waves": 6, "midbosses": 0, "kinds": ["bug", "zig", "diver"], "speed": 29.0, "fire": 0.72, "dive": 0.62, "boss": false, "stars": 0.95, "scroll": 0.96, "tint": Color("#aa8cff")},
+	{"name": "TWIN COMET", "bg": 1, "rows": 3, "cols": 7, "waves": 4, "midbosses": 2, "kinds": ["zig", "diver", "armor"], "speed": 33.0, "fire": 0.84, "dive": 0.78, "boss": false, "stars": 1.02, "scroll": 1.04, "tint": Color("#ff79cb")},
+	{"name": "SOLAR BREAK", "bg": 2, "rows": 4, "cols": 8, "waves": 5, "midbosses": 0, "kinds": ["armor", "saucer", "zig", "diver"], "speed": 36.0, "fire": 0.94, "dive": 0.92, "boss": false, "stars": 1.08, "scroll": 1.12, "tint": Color("#ffd07a")},
+	{"name": "TRINITY SIEGE", "bg": 3, "rows": 4, "cols": 8, "waves": 4, "midbosses": 3, "kinds": ["saucer", "zig", "armor", "diver"], "speed": 39.0, "fire": 1.06, "dive": 1.08, "boss": false, "stars": 1.16, "scroll": 1.22, "tint": Color("#ff6f9e")},
 	{"name": "NOVA SOVEREIGN", "bg": 4, "rows": 0, "cols": 0, "waves": 1, "midbosses": 0, "kinds": [], "speed": 0.0, "fire": 0.0, "dive": 0.0, "boss": true, "stars": 1.26, "scroll": 1.34, "tint": Color("#6ea5ff")},
 ]
 
@@ -50,10 +50,10 @@ const ENEMY_STATS := {
 	"zig": {"hp": 2, "score": 180, "size": 36.0, "color": Color("#39eaff"), "role": "weaver"},
 	"armor": {"hp": 3, "score": 420, "size": 46.0, "color": Color("#8dff5d"), "role": "tank"},
 	"saucer": {"hp": 2, "score": 360, "size": 44.0, "color": Color("#ff57f0"), "role": "flanker"},
-	"commander": {"hp": 20, "score": 1600, "size": 64.0, "color": Color("#ff5ff0"), "role": "commander"},
-	"mid_lancer": {"hp": 500, "score": 5200, "size": 76.0, "color": Color("#ff5a7a"), "role": "midboss"},
-	"mid_orbit": {"hp": 560, "score": 5600, "size": 78.0, "color": Color("#a96cff"), "role": "midboss"},
-	"mid_anchor": {"hp": 650, "score": 6200, "size": 82.0, "color": Color("#ffb84d"), "role": "midboss"},
+	"commander": {"hp": 14, "score": 1600, "size": 64.0, "color": Color("#ff5ff0"), "role": "commander"},
+	"mid_lancer": {"hp": 250, "score": 5200, "size": 76.0, "color": Color("#ff5a7a"), "role": "midboss"},
+	"mid_orbit": {"hp": 280, "score": 5600, "size": 78.0, "color": Color("#a96cff"), "role": "midboss"},
+	"mid_anchor": {"hp": 330, "score": 6200, "size": 82.0, "color": Color("#ffb84d"), "role": "midboss"},
 }
 
 const CHIP_TRACKS := {

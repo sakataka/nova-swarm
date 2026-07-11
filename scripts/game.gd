@@ -69,6 +69,14 @@ var final_boss_texture: Texture2D
 var boss_weakpoint_texture: Texture2D
 var enemy_fleet_texture: Texture2D
 var player_ship_texture: Texture2D
+var title_background_texture: Texture2D
+var title_controls_texture: Texture2D
+var title_mode_selected_texture: Texture2D
+var title_mode_idle_texture: Texture2D
+var title_deploy_texture: Texture2D
+var status_icons_texture: Texture2D
+var shield_fx_texture: Texture2D
+var hud_chassis_texture: Texture2D
 var font: Font
 var overdrive_aura: CPUParticles2D
 var overdrive_burst: CPUParticles2D
@@ -111,6 +119,14 @@ func _ready() -> void:
 	boss_weakpoint_texture = _load_imported_or_png_texture("res://public/assets/boss_weakpoints.png")
 	enemy_fleet_texture = _load_imported_or_png_texture("res://public/assets/renewal/enemy_fleet.png")
 	player_ship_texture = _load_imported_or_png_texture("res://public/assets/renewal/player_ship.png")
+	title_background_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/title_launch_bay.png")
+	title_controls_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/controls/sheet-transparent.png")
+	title_mode_selected_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/controls/mode_selected.png")
+	title_mode_idle_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/controls/mode_idle.png")
+	title_deploy_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/controls/deploy_button.png")
+	status_icons_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/icons/sheet-transparent.png")
+	shield_fx_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/shield/sheet-transparent.png")
+	hud_chassis_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/hud/hud_chassis.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
 	_setup_overdrive_particles()
@@ -309,7 +325,7 @@ func _end_touch_control(index: int) -> bool:
 
 
 func _select_title_mode_at(position: Vector2) -> bool:
-	var hitboxes := _title_mode_hitboxes(Config.HUD + 330.0)
+	var hitboxes := _title_mode_hitboxes(0.0)
 	if Rect2(hitboxes.manual).has_point(position):
 		selected_control_mode = ControlMode.MANUAL
 		return true
@@ -850,20 +866,20 @@ func _check_stage_end() -> void:
 		var wave_count := int(Config.STAGES[stage].get("waves", 1))
 		if stage_wave + 1 < wave_count:
 			score += 260 + stage_wave * 90
-			wave_transition_timer = 0.85
+			wave_transition_timer = 0.55
 			projectiles.clear_enemy_bullets()
 			audio_manager.play_sfx("wave")
 			return
 		score += 1200 + stage * 550 + (900 if player.no_miss_stage else 0)
 		_record_stage_result()
 		player.bombs = mini(5, player.bombs + 1)
-		player.shield = mini(player.shield_max, player.shield + 1)
+		player.shield = player.shield_max
 		if player.lives <= 2:
 			player.lives += 1
 		audio_manager.play_sfx("stage_clear")
 		pending_stage = stage + 1
-		stage_transition_timer = 1.35
-		stage_banner = 1.35
+		stage_transition_timer = 0.95
+		stage_banner = 0.95
 
 
 func _start_stage_metrics() -> void:
@@ -989,8 +1005,7 @@ func _draw() -> void:
 	_draw_playfield()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if state in [GameState.PLAYING, GameState.PAUSED]:
-		hud.draw_hud(self, font, score, stage, stage_wave, int(Config.STAGES[stage].get("waves", 1)), player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), player.chip_levels, player.chip_progress, audio_manager.muted)
-		_draw_control_mode_badge()
+		hud.draw_hud(self, font, score, stage, stage_wave, int(Config.STAGES[stage].get("waves", 1)), player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), player.chip_levels, player.chip_progress, audio_manager.muted, hud_chassis_texture, status_icons_texture)
 	if flash > 0.0:
 		draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.34))
 	if stage_banner > 0.0 and state == GameState.PLAYING:
@@ -1048,9 +1063,8 @@ func _draw_player() -> void:
 	var tint := Color(1, 1, 1, 0.52) if player.invuln > 0.0 and int(stage_timer * 16.0) % 2 == 0 else Color.WHITE
 	if player.is_overdrive_active():
 		tint = Color(1.0, 0.93, 0.48, 1.0)
-		var pulse := 0.5 + sin(stage_timer * 18.0) * 0.5
-		draw_arc(Vector2(player.x, player.y), 64.0 + pulse * 8.0, 0.0, TAU, 64, Color(1.0, 0.86, 0.28, 0.48), 4.0)
-		draw_arc(Vector2(player.x, player.y), 78.0 - pulse * 6.0, 0.0, TAU, 64, Color(1.0, 0.32, 0.9, 0.32), 2.0)
+		var pulse := 0.92 + sin(stage_timer * 12.0) * 0.06
+		_draw_status_icon(6, Rect2(player.x - 78.0 * pulse, player.y - 78.0 * pulse, 156.0 * pulse, 156.0 * pulse), Color(1.0, 0.9, 0.48, 0.46))
 	if player_ship_texture:
 		var size := 118.0 if not player.is_overdrive_active() else 126.0
 		draw_texture_rect(player_ship_texture, Rect2(player.x - size * 0.5, player.y - size * 0.5, size, size), false, tint)
@@ -1061,24 +1075,14 @@ func _draw_player() -> void:
 
 
 func _draw_player_shield() -> void:
-	var center := Vector2(player.x, player.y)
-	var pulse := 0.5 + sin(stage_timer * 7.5) * 0.5
-	var shield_count: int = clampi(player.shield, 1, 2)
-	for layer in range(shield_count):
-		var radius := 58.0 + layer * 13.0 + pulse * 3.0
-		var alpha := 0.34 + layer * 0.1
-		var color := Color(0.38, 0.92, 1.0, alpha)
-		draw_arc(center, radius, -PI * 0.42 + layer * 0.5, PI * 0.72 + layer * 0.5, 32, color, 4.0)
-		draw_arc(center, radius, PI * 0.58 + layer * 0.5, PI * 1.72 + layer * 0.5, 32, color, 4.0)
-		draw_arc(center, radius + 5.0, -PI * 0.06 - layer * 0.35, PI * 0.2 - layer * 0.35, 14, Color(1.0, 1.0, 1.0, alpha + 0.16), 2.0)
-
-	for i in range(shield_count):
-		var angle := stage_timer * (1.6 + i * 0.32) + i * TAU / float(shield_count)
-		var icon_center := center + Vector2(cos(angle), sin(angle)) * (66.0 + i * 10.0)
-		if ui_texture:
-			draw_texture_rect_region(ui_texture, Rect2(icon_center.x - 17.0, icon_center.y - 17.0, 34.0, 34.0), ui_regions["shield"], Color(1.0, 1.0, 1.0, 0.92))
-		else:
-			draw_circle(icon_center, 12.0, Color(0.45, 0.92, 1.0, 0.78))
+	if not shield_fx_texture:
+		return
+	var cell := float(shield_fx_texture.get_width()) / 2.0
+	var frame := int(stage_timer * 7.0) % 4
+	var region := Rect2(float(frame % 2) * cell, float(frame / 2) * cell, cell, cell)
+	var size := 166.0 + float(clampi(player.shield, 1, 2) - 1) * 16.0
+	var tint := Color(1, 1, 1, 0.92) if player.shield == 1 else Color(1.0, 0.92, 0.58, 1.0)
+	draw_texture_rect_region(shield_fx_texture, Rect2(player.x - size * 0.5, player.y - size * 0.5, size, size), region, tint)
 
 
 func _draw_enemy(enemy: Dictionary) -> void:
@@ -1328,40 +1332,29 @@ func _draw_bomb_wave(wave: Dictionary) -> void:
 func _draw_item(item: Dictionary) -> void:
 	var bob := sin(item.t * 8.0) * 3.0
 	var center := Vector2(item.x, item.y + bob)
-	var color := Color("#ff6f88")
-	var label := "+"
-	var region_key := "life"
+	var icon_index := 4
+	var color := Config.UI_GREEN
 	if Config.CHIP_TRACKS.has(item.kind):
 		var track: Dictionary = Config.CHIP_TRACKS[item.kind]
 		color = track.color
-		draw_circle(center, 25.0, Color(color, 0.12))
-		draw_arc(center, 21.0 + sin(item.t * 6.0) * 2.0, 0.0, TAU, 24, Color(color, 0.9), 2.0)
-		if track.shape == "triangle":
-			draw_colored_polygon(PackedVector2Array([center + Vector2(0, -13), center + Vector2(12, 10), center + Vector2(-12, 10)]), color)
-		elif track.shape == "fan":
-			draw_colored_polygon(PackedVector2Array([center + Vector2(0, 12), center + Vector2(-15, -8), center, center + Vector2(15, -8)]), color)
-		else:
-			var points := PackedVector2Array()
-			for i in range(6):
-				points.append(center + Vector2(cos(TAU * i / 6.0), sin(TAU * i / 6.0)) * 13.0)
-			draw_colored_polygon(points, color)
-		return
-	if item.kind == "bomb":
+		icon_index = ["power", "spread", "resonance"].find(str(item.kind))
+	elif item.kind == "bomb":
 		color = Color("#ff7af0")
-		label = "B"
-		region_key = "bomb"
+		icon_index = 5
 	elif item.kind == "shield":
 		color = Color("#72eaff")
-		label = "S"
-		region_key = "shield"
-	if ui_texture:
-		draw_texture_rect_region(ui_texture, Rect2(center.x - 24.0, center.y - 24.0, 48.0, 48.0), ui_regions[region_key])
-	else:
-		draw_circle(center, 20.0, Color(color, 0.18))
-		draw_circle(center, 12.0, Color(color, 0.88))
-		draw_arc(center, 18.0, -PI * 0.5, PI * 1.5, 28, Color(1, 1, 1, 0.72), 2.0)
-		var label_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
-		draw_string(font, center + Vector2(-label_size.x / 2.0, 5.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#06121c"))
+		icon_index = 3
+	var pulse := 1.0 + sin(item.t * 7.0) * 0.08
+	draw_circle(center, 30.0 * pulse, Color(color, 0.11))
+	_draw_status_icon(icon_index, Rect2(center.x - 27.0 * pulse, center.y - 27.0 * pulse, 54.0 * pulse, 54.0 * pulse), Color.WHITE)
+
+
+func _draw_status_icon(index: int, rect: Rect2, tint := Color.WHITE) -> void:
+	if not status_icons_texture:
+		return
+	var cell := float(status_icons_texture.get_width()) / 3.0
+	var region := Rect2(float(index % 3) * cell, float(index / 3) * cell, cell, cell)
+	draw_texture_rect_region(status_icons_texture, rect, region, tint)
 
 
 func _draw_sprite(key: String, cx: float, cy: float, dw: float, dh: float, tint := Color.WHITE) -> void:
@@ -1372,26 +1365,23 @@ func _draw_sprite(key: String, cx: float, cy: float, dw: float, dh: float, tint 
 
 
 func _draw_infection_overlay() -> void:
-	draw_rect(Rect2(0, 0, Config.W, Config.H), Color(0.0, 0.0, 0.03, 0.72))
-	draw_rect(Rect2(0, 0, Config.W, Config.H), Color(Config.UI_MAGENTA, 0.06))
+	draw_rect(Rect2(0, 0, Config.W, Config.H), Color(0.0, 0.025, 0.07, 0.78))
+	draw_rect(Rect2(0, 0, Config.W, Config.H), Color(Config.UI_CYAN, 0.035))
 	for i in range(12):
 		var y := 18.0 + float(i) * 58.0
 		var alpha := 0.08 + float(i % 3) * 0.025
 		draw_line(Vector2(0, y), Vector2(Config.W, y), Color(Config.UI_CYAN, alpha), 1.0)
 	for i in range(8):
 		var x := fmod(stage_timer * 18.0 + float(i) * 137.0, Config.W)
-		draw_line(Vector2(x, Config.HUD), Vector2(x - 180.0, Config.H), Color(Config.UI_RED, 0.06), 1.0)
+		draw_line(Vector2(x, Config.HUD), Vector2(x - 180.0, Config.H), Color(Config.UI_AMBER, 0.045), 1.0)
 
 
 func _draw_terminal_panel(rect: Rect2, accent: Color, fill_alpha := Config.UI_PANEL_ALPHA, selected := false) -> void:
-	draw_rect(rect, Color(Config.UI_PANEL_DARK, fill_alpha))
-	if ui_chrome_texture and ui_chrome_regions.has("panel"):
-		draw_texture_rect_region(ui_chrome_texture, rect, ui_chrome_regions.panel, Color(1, 1, 1, 0.2 + (0.12 if selected else 0.0)))
-	draw_rect(rect.grow(-3.0), Color(Config.UI_PANEL, fill_alpha * 0.74))
-	draw_rect(rect, Color(accent, 0.76 if selected else Config.UI_LINE_ALPHA), false, 2.0 if selected else 1.0)
-	draw_line(rect.position + Vector2(12, 5), rect.position + Vector2(rect.size.x * 0.4, 5), Color(accent, 0.8), 2.0)
-	draw_line(rect.end - Vector2(rect.size.x * 0.4, 5), rect.end - Vector2(12, 5), Color(accent, 0.35), 1.0)
-	_draw_corner_marks(rect, accent, selected)
+	draw_rect(rect, Color(0.015, 0.055, 0.12, fill_alpha))
+	if title_controls_texture:
+		var cell := float(title_controls_texture.get_width()) / 2.0
+		var region := Rect2(0 if selected else cell, 0, cell, cell)
+		draw_texture_rect_region(title_controls_texture, rect, region, Color(1, 1, 1, 0.72 if selected else 0.54))
 
 
 func _draw_corner_marks(rect: Rect2, accent: Color, selected: bool) -> void:
@@ -1418,12 +1408,8 @@ func _draw_chrome_icon(key: String, rect: Rect2, tint := Color.WHITE) -> void:
 
 func _draw_core_glyph(center: Vector2, radius: float, accent: Color, active := false) -> void:
 	var pulse := 0.5 + sin(Time.get_ticks_msec() * 0.009) * 0.5
-	if ui_chrome_texture and ui_chrome_regions.has("core"):
-		var size := radius * 2.0
-		draw_texture_rect_region(ui_chrome_texture, Rect2(center.x - radius, center.y - radius, size, size), ui_chrome_regions.core, Color(1, 1, 1, 0.76))
-	draw_circle(center, radius * 0.48, Color(accent, 0.14 + pulse * 0.1))
-	draw_arc(center, radius * (0.72 + pulse * 0.08), 0.0, TAU, 48, Color(accent, 0.6 if active else 0.36), 3.0)
-	draw_arc(center, radius * 0.42, -PI * 0.25, PI * 1.35, 32, Color(Config.UI_CYAN, 0.42), 2.0)
+	var size := radius * (1.72 + pulse * 0.12)
+	_draw_status_icon(6 if active else 2, Rect2(center.x - size * 0.5, center.y - size * 0.5, size, size), Color(1, 1, 1, 0.84))
 
 
 func _draw_terminal_button(rect: Rect2, label: String, sublabel: String, accent: Color, selected := false) -> void:
@@ -1436,6 +1422,12 @@ func _draw_terminal_button(rect: Rect2, label: String, sublabel: String, accent:
 
 
 func _draw_overlay() -> void:
+	if state == GameState.TITLE and title_background_texture:
+		draw_texture_rect(title_background_texture, Rect2(0, 0, Config.W, Config.H), false, Color.WHITE)
+		draw_rect(Rect2(0, Config.H - 118.0, Config.W, 118.0), Color(0.01, 0.035, 0.075, 0.58))
+		_draw_title_mode_select(0.0)
+		_draw_title_start_button()
+		return
 	_draw_infection_overlay()
 	var title := "NOVA SWARM"
 	if state == GameState.PAUSED:
@@ -1445,17 +1437,7 @@ func _draw_overlay() -> void:
 	elif state == GameState.GAME_OVER:
 		title = "GAME OVER"
 	var sub := "P TO RESUME" if state == GameState.PAUSED else "ENTER TO DEPLOY"
-	if state == GameState.TITLE and ui_texture:
-		_draw_terminal_panel(Rect2(86, Config.HUD + 58, 788, 234), Config.UI_RED, 0.5)
-		_draw_core_glyph(Vector2(480, Config.HUD + 176), 80.0, Config.UI_RED, true)
-		draw_texture_rect_region(ui_texture, Rect2(124, Config.HUD + 74, 712, 218), ui_regions.logo, Color(1, 1, 1, 0.96))
-		hud.draw_centered(self, font, "AURORA FRONT ONLINE", Config.HUD + 286, 13, Color(Config.UI_CYAN, 0.9))
-		_draw_title_mode_select(Config.HUD + 330.0)
-		_draw_title_start_button()
-		hud.draw_centered(self, font, sub, Config.HUD + 512, 15, Config.UI_MAGENTA)
-		hud.draw_centered(self, font, "COLLECT POWER / BREAK THE SIEGE / IGNITE OVERDRIVE", Config.HUD + 548, 16, Color(Config.UI_TEXT, 0.84))
-		hud.draw_centered(self, font, "SPACE SHOT / B BOMB / E OVERDRIVE / P PAUSE / M MUTE", Config.HUD + 580, 12, Config.UI_TEXT_DIM)
-	elif state == GameState.VICTORY and ui_texture:
+	if state == GameState.VICTORY and ui_texture:
 		_draw_terminal_panel(Rect2(118, Config.HUD + 48, 724, 214), Config.UI_CYAN, 0.58)
 		draw_texture_rect_region(ui_texture, Rect2(146, Config.HUD + 62, 668, 210), ui_regions.ending, Color(1, 1, 1, 0.88))
 		_draw_arcade_title(title, Config.HUD + 292.0, 44, Config.UI_TEXT)
@@ -1475,7 +1457,7 @@ func _draw_overlay() -> void:
 
 
 func _draw_controls_panel(y: float) -> void:
-	var rect := Rect2(260.0, y, 440.0, 226.0)
+	var rect := Rect2(260.0, y, 440.0, 202.0)
 	_draw_terminal_panel(rect, Config.UI_CYAN, 0.78)
 	draw_string(font, rect.position + Vector2(34.0, 36.0), "CONTROL CHANNELS", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Config.UI_CYAN)
 	var rows := [
@@ -1483,7 +1465,6 @@ func _draw_controls_panel(y: float) -> void:
 		["SHOT", "SPACE"],
 		["BOMB", "B / SHIFT"],
 		["OVERDRIVE", "E"],
-		["AI MODE", "T"],
 		["PAUSE", "P"],
 		["MUTE", "M"],
 	]
@@ -1536,7 +1517,7 @@ func _rank_color(rank: String) -> Color:
 
 
 func _draw_control_mode_badge() -> void:
-	if state != GameState.PLAYING:
+	if state != GameState.PLAYING or control_mode != ControlMode.AI:
 		return
 	var label := _control_mode_label(control_mode)
 	var color := Config.UI_AMBER if control_mode == ControlMode.AI else Config.UI_CYAN
@@ -1617,43 +1598,33 @@ func _touch_pause_hitbox() -> Rect2:
 
 
 func _draw_title_mode_select(y: float) -> void:
-	var manual := "MANUAL"
-	var ai := "AI DEMO"
-	var manual_color := Config.UI_AMBER if selected_control_mode == ControlMode.MANUAL else Color(Config.UI_TEXT, 0.58)
-	var ai_color := Config.UI_AMBER if selected_control_mode == ControlMode.AI else Color(Config.UI_TEXT, 0.58)
-	var manual_text := manual
-	var ai_text := ai
-	var positions := _title_mode_text_positions(y, manual_text, ai_text)
 	var hitboxes := _title_mode_hitboxes(y)
-	_draw_title_mode_button(Rect2(hitboxes.manual), selected_control_mode == ControlMode.MANUAL, manual_color)
-	_draw_title_mode_button(Rect2(hitboxes.ai), selected_control_mode == ControlMode.AI, ai_color)
-	draw_string(font, positions.manual, manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, manual_color)
-	draw_string(font, positions.ai, ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ai_color)
-	hud.draw_centered(self, font, "CLICK OR LEFT / RIGHT SELECT CONTROL CHANNEL", y + 54.0, 14, Config.UI_TEXT_DIM)
+	_draw_title_control(Rect2(hitboxes.manual), selected_control_mode == ControlMode.MANUAL, "MANUAL")
+	_draw_title_control(Rect2(hitboxes.ai), selected_control_mode == ControlMode.AI, "AI DEMO")
 
 
 func _draw_title_start_button() -> void:
 	var rect := _title_start_hitbox()
-	_draw_terminal_button(rect, "START", _control_mode_label(selected_control_mode) + " DEPLOYMENT", Config.UI_MAGENTA, true)
+	if title_deploy_texture:
+		draw_texture_rect(title_deploy_texture, rect, false, Color(1, 1, 1, 0.98))
+	_draw_centered_in_width("DEPLOY", rect.position.x, rect.size.x, rect.position.y + 51.0, 25, Color.WHITE)
 
 
 func _title_start_hitbox() -> Rect2:
-	return Rect2((Config.W - 256.0) * 0.5, Config.HUD + 404.0, 256.0, 78.0)
+	return Rect2(500.0, 614.0, 392.0, 80.0)
 
 
-func _draw_title_mode_button(rect: Rect2, selected: bool, color: Color) -> void:
-	_draw_terminal_panel(rect, color, 0.62, selected)
+func _draw_title_control(rect: Rect2, selected: bool, label: String) -> void:
+	var texture := title_mode_selected_texture if selected else title_mode_idle_texture
+	if texture:
+		draw_texture_rect(texture, rect, false, Color.WHITE)
+	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + 39.0, 16, Color.WHITE if selected else Color(Config.UI_TEXT, 0.62))
 
 
 func _title_mode_hitboxes(y: float) -> Dictionary:
-	var manual_text := "MANUAL"
-	var ai_text := "AI DEMO"
-	var positions := _title_mode_text_positions(y, manual_text, ai_text)
-	var manual_size := font.get_string_size(manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
-	var ai_size := font.get_string_size(ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
 	return {
-		"manual": Rect2(positions.manual.x - 26.0, y - 32.0, manual_size.x + 52.0, 52.0),
-		"ai": Rect2(positions.ai.x - 26.0, y - 32.0, ai_size.x + 52.0, 52.0),
+		"manual": Rect2(70.0, 626.0, 196.0, 60.0),
+		"ai": Rect2(264.0, 626.0, 196.0, 60.0),
 	}
 
 
@@ -1678,9 +1649,9 @@ func _draw_stage_banner(text: String, y: float, alpha: float) -> void:
 	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 	var x := (Config.W - text_size.x) / 2.0
 	var panel := Rect2((Config.W - 520.0) * 0.5, y - 48.0, 520.0, 72.0)
-	_draw_terminal_panel(panel, Config.UI_RED, 0.42 * alpha, true)
-	if ui_texture:
-		draw_texture_rect_region(ui_texture, Rect2(250, y - 45.0, 460, 66), ui_regions.banner, Color(1, 1, 1, alpha * 0.46))
+	if title_controls_texture:
+		var cell := float(title_controls_texture.get_width()) / 2.0
+		draw_texture_rect_region(title_controls_texture, panel, Rect2(0, cell, cell, cell), Color(1, 1, 1, alpha * 0.84))
 	draw_string(font, Vector2(x + 2.0, y + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.62 * alpha))
 	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_TEXT, alpha))
 
@@ -1689,10 +1660,10 @@ func _draw_arcade_title(text: String, y: float, size: int, color: Color) -> void
 	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 	var x := (Config.W - text_size.x) / 2.0
 	draw_string(font, Vector2(x + 3.0, y + 3.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.0, 0.0, 0.0, 0.72))
-	draw_string(font, Vector2(x + 1.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_RED, 0.42))
+	draw_string(font, Vector2(x + 1.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_CYAN, 0.42))
 	draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
-	draw_line(Vector2(x - 42.0, y + 10.0), Vector2(x - 10.0, y + 10.0), Config.UI_RED, 3.0)
-	draw_line(Vector2(x + text_size.x + 10.0, y + 10.0), Vector2(x + text_size.x + 42.0, y + 10.0), Config.UI_RED, 3.0)
+	draw_line(Vector2(x - 42.0, y + 10.0), Vector2(x - 10.0, y + 10.0), Config.UI_AMBER, 3.0)
+	draw_line(Vector2(x + text_size.x + 10.0, y + 10.0), Vector2(x + text_size.x + 42.0, y + 10.0), Config.UI_AMBER, 3.0)
 	draw_line(Vector2(x - 24.0, y + 17.0), Vector2(x + text_size.x + 24.0, y + 17.0), Color(Config.UI_CYAN, 0.16), 1.0)
 
 

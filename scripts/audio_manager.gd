@@ -3,13 +3,13 @@ class_name NovaAudioManager
 
 const MUSIC_BANK_LABEL := "nova_swarm"
 const USE_RESONATE_MUSIC := false
-const MUSIC_VOLUME_DB := -25.0
-const MUSIC_DUCK_DB := -29.0
-const MUSIC_OVERDRIVE_DB := -22.0
+const MUSIC_VOLUME_DB := -14.0
+const MUSIC_DUCK_DB := -20.0
+const MUSIC_OVERDRIVE_DB := -10.0
 const MUSIC_FADE_TIME := 1.25
 const OVERDRIVE_STEM_NAME := "overdrive"
 const OVERDRIVE_STEM_FADE_TIME := 0.38
-const OVERDRIVE_FALLBACK_VOLUME_DB := -34.0
+const OVERDRIVE_FALLBACK_VOLUME_DB := -22.0
 const MUSIC_VOLUME_TWEEN_TIME := 0.25
 const SFX_MIN_INTERVAL_MS := 70
 const SFX_INTERVALS := {
@@ -33,9 +33,9 @@ const MUSIC_PATHS := {
 }
 
 const OVERDRIVE_LAYER_SETTINGS := {
-	"stage_drive": {"root": 220.0, "energy": 0.75, "volume": -34.0},
-	"stage_pressure": {"root": 277.18, "energy": 0.92, "volume": -33.0},
-	"boss_core": {"root": 164.81, "energy": 1.0, "volume": -32.0},
+	"stage_drive": {"root": 220.0, "energy": 0.75, "volume": -21.0},
+	"stage_pressure": {"root": 277.18, "energy": 0.92, "volume": -20.0},
+	"boss_core": {"root": 164.81, "energy": 1.0, "volume": -19.0},
 }
 
 var muted := false
