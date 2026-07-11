@@ -1,6 +1,6 @@
 # Nova Swarm
 
-Godot 4.7 + GDScript で作るレトロアーケード調の2Dシューティングゲームです。Space Invaders / Galaxian 系の編隊移動、急降下、ボム、5ステージ構成、ボス戦をベースにしています。
+Godot 4.7 + GDScript で作る高コントラストなアニメ宇宙戦調の2Dシューティングゲームです。編隊戦、急降下、戦闘中のチップ成長、複数中ボス、部位破壊型の最終ボスを、約8〜12分の6ステージにまとめています。
 
 ## 起動
 
@@ -20,12 +20,10 @@ Godotエディタでこのフォルダを開き、実行します。
 | ショット | `Space` |
 | ボム | `Shift` または `B` |
 | Resonance Overdrive | `E` |
-| AIプレイ切り替え | `T` |
 | ポーズ | `P` |
 | ミュート | `M` |
 | モード選択 | タイトル画面でクリック、または `A` / `D`・`←` / `→` |
 | 開始 / リスタート | タイトル画面の `START` をクリック、または `Enter` |
-| アップグレード選択 | `1` / `2` / `3` で直接選択、または `←` / `→` + `Enter` |
 | タッチ操作 | タッチ端末では左下スティック、右下 `SHOT` / `BOMB` / `OVER`、右上 `PAUSE` |
 
 ## 構成
@@ -43,7 +41,7 @@ scripts/hud.gd
 scripts/audio_manager.gd
 scripts/smoke_test.gd
 scripts/gameplay_test.gd
-scripts/ai_boss_stage5_test.gd
+scripts/ai_boss_stage6_test.gd
 public/assets/spritesheet.png
 public/assets/backgrounds.png
 public/assets/ui_atlas.png
@@ -52,41 +50,51 @@ public/assets/rock_obstacle.png
 public/assets/projectile_atlas.png
 public/assets/final_boss.png
 public/assets/boss_weakpoints.png
+public/assets/renewal/player_ship.png
+public/assets/renewal/enemy_fleet.png
+public/assets/renewal/final_boss.png
+public/assets/renewal/background_atlas.png
 export_presets.cfg
 ```
 
-`scripts/game.gd` は `GameController` として各サブシステムを束ねます。ステージ・敵・HUD用数字、アップグレード候補などの調整値は `scripts/game_config.gd` に集約しています。スプライトシートは実行時に黒背景を透明化して使います。
+`scripts/game.gd` は `GameController` として各サブシステムを束ねます。ステージ、ウェーブ、中ボス、成長チップ、敵、HUD用数字などの調整値は `scripts/game_config.gd` に集約しています。
 
 Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて継続開発する方針は [`docs/godot-ai-development-workflow.md`](docs/godot-ai-development-workflow.md) にまとめています。Nova Swarm の責務分割を、次の Godot プロジェクトや伸ばすワーム系ゲームへ移すための制作メモです。
 
 主な分割:
 
-- `player.gd`: 自機のライフ、ボム、無敵、連続撃破チェイン、アップグレード修飾
-- `enemy_swarm.gd`: 通常ステージの編隊、急降下、射撃
+- `player.gd`: 自機のライフ、ボム、無敵、連続撃破チェイン、3系統のチップ成長
+- `enemy_swarm.gd`: 通常ウェーブの編隊、急降下、中ボスの行動と同時攻撃制御
 - `boss_controller.gd`: ボスのフェーズ、攻撃、ビーム予兆、部位破壊
 - `projectile_manager.gd`: 自弾・敵弾、分岐ショットの生成と更新
-- `hud.gd`: 赤い中枢侵食テーマのHUD描画、リソースアイコン、ミュート表示、ボスHP/Resonanceゲージ
-- `audio_manager.gd`: 効果音、Resonate対応BGM切り替え、Overdrive用BGMレイヤー、クロスフェード、ミュート、音量遷移、Masterリミッター、headless時の音声無効化
+- `hud.gd`: 固定HUD、ウェーブ進捗、3系統の成長状態、ボスHP/Overdriveゲージ
+- `audio_manager.gd`: 多層インパクトSFX、連打抑制、ピッチ揺らぎ、Overdrive用BGMレイヤー、クロスフェード、ミュート、Masterリミッター、headless時の音声無効化
 
 ## 主なゲームシステム
 
-- 5ステージ構成で、後半ステージには専用ギミックがあります。`ROCK BELT` では破壊可能な岩障害物、`PLASMA NEST` では敵弾を跳ね返すプラズマ壁が出ます。
-- ステージ間の3択アップグレードは、連射だけでなく、ワイドショット、かすりチェイン、ボム返還、シールド反撃、アイテムドロップ強化などのビルド分岐を作ります。
+- 6ステージ構成です。3面最終ウェーブは中ボス2体、5面は中ボス3体が登場します。5面では3体が常時一斉攻撃せず、最大2体が攻撃し1体が休むローテーションになります。6面は最終ボス `NOVA SOVEREIGN` 戦です。
+- 面と面の間に選択画面は挟みません。敵が落とす色付きチップを戦闘中に集め、`POW`（火力・連射）、`SPR`（拡散）、`RES`（Resonance・Overdrive）を各4段階まで成長させます。3個でレベルアップし、被弾時に失うのは未完成の進捗だけです。
+- 通常面は複数ウェーブが約0.85秒で接続し、面クリアも短いバナーだけで次へ進みます。面クリアと中ボス撃破はシールド回復のチェックポイントになり、低残機時には面クリアで1機修復されます。
+- 4面では破壊可能な岩障害物、5面では敵弾を跳ね返すプラズマ壁が出ます。
 - Resonance Overdrive中は近くの敵弾をスコア結晶に変換し、攻めながら危険を得点へ変えられます。近距離撃破もOverdrive維持に寄与します。
 - ボスは複数の破壊可能部位を持ち、部位を壊すと攻撃テンポやビーム行動に影響します。
 - リザルトにはランクに加えて次回改善ヒントを表示します。スコア、チェイン、被弾、ボム使用、クリア時間を見て改善先を出します。
-- AI Pilotは自動プレイに加えて、AI Rivalスコアを表示し、練習・観戦時の比較材料にしています。
+- AI Pilotはタイトル画面の `AI DEMO` から開始できます。プレイ中の操作モード切り替えはなく、通常プレイのテンポを妨げません。
 
 ## アセット
 
 - `public/assets/spritesheet.png`: 自機、敵、弾、爆発、ボスなどの4x4固定グリッドスプライト
-- `public/assets/backgrounds.png`: 5ステージ分の宇宙背景アトラス
+- `public/assets/backgrounds.png`: 旧ビジュアル互換用の宇宙背景アトラス
 - `public/assets/ui_atlas.png`: タイトルロゴ、アイテムアイコン、ステージバナー、エンディング絵のUIアトラス
 - `public/assets/ui_chrome.png`: 赤い中枢侵食テーマのパネル表面、警告コア、タッチボタン用ピクセルUIアトラス
 - `public/assets/rock_obstacle.png`: `ROCK BELT` の岩障害物用スプライト。赤い鉱脈背景に馴染む生成画像を透明化して使用
 - `public/assets/projectile_atlas.png`: 自弾、Overdrive弾、敵弾、ボス弾用の生成スプライトアトラス
-- `public/assets/final_boss.png`: 5面ボス用の高解像度生成スプライト
+- `public/assets/final_boss.png`: 旧ビジュアル互換用のボススプライト
 - `public/assets/boss_weakpoints.png`: ボス部位の生存/破壊済み表示用スプライトアトラス
+- `public/assets/renewal/player_ship.png`: 白・コバルト・シアンを基調にした新しい自機スプライト
+- `public/assets/renewal/enemy_fleet.png`: 通常敵6種と中ボス3種を収録した3x3スプライトアトラス
+- `public/assets/renewal/final_boss.png`: 白・コバルト・金の最終ボス `NOVA SOVEREIGN`
+- `public/assets/renewal/background_atlas.png`: 戦闘の視認性を優先した6面分の3x2宇宙背景アトラス
 - `public/assets/audio/music/*.wav`: タイトル、通常戦、後半戦、ボス、勝利、ゲームオーバー用のネオンSTG系BGMループ。通常戦、後半戦、ボス戦にはResonateの追加stemとして鳴るOverdrive用シンセ/パーカッションレイヤーを実行時生成しています。
 
 ## ゲーム品質改善
@@ -99,17 +107,17 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 - Overdrive中に敵弾をスコア結晶へ変換し、攻撃的な回避に得点上の価値を持たせています。
 - Overdrive中はResonateのBGM stemを有効化し、通常戦、後半戦、ボス戦それぞれで専用レイヤーが重なってテンションが上がります。
 - BGMは重なりを避けるため標準では単一のフォールバック再生経路に寄せ、全体音量とOverdriveレイヤー音量をかなり控えめにしています。duck解除や曲切り替えは短いフェードで処理し、SFXの短時間連打とMasterバスのピークも抑えています。
-- ステージ専用ギミック、ビルド分岐アップグレード、ボス部位破壊、リザルト改善ヒントを追加しています。
-- タイトル画面とポーズ画面に操作ガイドを表示し、HUDはライフ・ボム・シールドをアイコンで示します。ミュート中は右上に状態表示が出ます。
-- UI/UXは最終ボスと`CITADEL CORE`に合わせた赤い中枢侵食テーマへ刷新しています。HUD、タイトル、アップグレード、結果、ポーズ、タッチ操作は同じ端末パネル表現で統一し、Resonance/Overdrive、ボスHP、CHAIN、AI Rivalなどの重要状態を色とゲージで読みやすくしています。
+- ステージ専用ギミック、戦闘中チップ成長、複数中ボス、ボス部位破壊、リザルト改善ヒントを追加しています。
+- HUDは画面揺れから分離し、スコア、ステージ／ウェーブ、ライフ、ボム、シールド、3系統の成長、Overdrive、ボスHPを上端に固定しています。
+- UI/UXは濃紺のパネル、シアンの操作情報、橙・緑・金の成長情報で統一し、背景やエフェクトが派手でも重要状態を読める高コントラスト設計にしています。
 - タッチUIはiPhone Air相当の縦長表示でも押しやすいよう、仮想スティック、`SHOT`、`BOMB`、`OVER`、`PAUSE`の表示とヒットボックスを大きめに調整しています。
-- 自弾・敵弾・5面ボス・ボス弱点表示を生成スプライトに差し替え、背景や岩障害物と同じ赤い鉱脈系の世界観に寄せています。
-- AI Pilotの可視化としてAI Rivalスコアを追加しています。
+- 自機、敵艦隊、中ボス、6面ボス、6面分の背景を新しい生成スプライトへ差し替えています。
+- ショット、着弾、爆発、チップ取得、レベルアップ、中ボス撃破、面クリアは、複数の短い波形を重ねた専用SFXにし、同音の過密な連打も抑制しています。
 - 爆発、被弾、ボム、ステージ開始、ボス攻撃に画面揺れ、フラッシュ、ヒットストップ、予兆を追加しています。
 - 急降下中の敵とボスビームにはDanger Lineを表示し、危険レーンを事前に読みやすくしています。
-- `armor` は2HPになり、敵ごとの役割差が出るようにしています。
+- `armor` は3HPになり、敵ごとの役割差が出るようにしています。
 - ボスの当たり判定は矩形ではなく複数の円形ゾーンで扱い、見た目から外れた弾が消えにくいようにしています。
-- ボスHPを調整し、終盤の硬さを少し抑えています。
+- 720秒の固定シードAI通しを基準に調整し、全6面クリアは約9分15秒です。
 - 同一フレーム内で破壊済みの敵や岩障害物へ再ヒットして、スコアや撃破処理が重複しないようにしています。
 
 ## 検証
@@ -129,17 +137,17 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 AIボス戦テスト:
 
 ```bash
-/Applications/Godot.app/Contents/MacOS/Godot --display-driver headless --rendering-driver dummy --audio-driver Dummy --path . --script res://scripts/ai_boss_stage5_test.gd --log-file /private/tmp/nova-swarm-ai-boss.log
+/Applications/Godot.app/Contents/MacOS/Godot --display-driver headless --rendering-driver dummy --audio-driver Dummy --path . --script res://scripts/ai_boss_stage6_test.gd --log-file /private/tmp/nova-swarm-ai-boss.log
 ```
 
 AIシミュレーション:
 
 ```bash
-/Applications/Godot.app/Contents/MacOS/Godot --display-driver headless --rendering-driver dummy --audio-driver Dummy --path . --script res://scripts/ai_simulation_test.gd --log-file /private/tmp/nova-swarm-ai-sim.log -- --seconds=75 --seed=20260501 --min-stage=2
+/Applications/Godot.app/Contents/MacOS/Godot --display-driver headless --rendering-driver dummy --audio-driver Dummy --path . --script res://scripts/ai_simulation_test.gd --log-file /private/tmp/nova-swarm-ai-sim.log -- --seconds=720 --seed=20260501 --min-stage=6
 ```
 
 `AI_SIM_RESULT` にステージ、スコア、残ライフ、被弾回数がJSONで出ます。AIの調整はこのコマンドを画面なしで回して確認できます。
-ボス戦だけ確認したい場合は `--start-stage=5` を付けます。
+最終ボス戦だけ確認したい場合は `--start-stage=6` を付けます。
 
 Godot MCPで確認する場合:
 

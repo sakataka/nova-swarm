@@ -23,6 +23,9 @@ var graze_chain_bonus := false
 var bomb_refund_chance := 0.0
 var shield_retaliate := false
 var close_kill_extend := false
+var shot_power_bonus := 0
+var chip_levels := {"power": 0, "spread": 0, "resonance": 0}
+var chip_progress := {"power": 0, "spread": 0, "resonance": 0}
 
 var _min_x := 42.0
 var _max_x := 918.0
@@ -56,7 +59,7 @@ func reset_run(start_x: float, start_y: float) -> void:
 	no_miss_stage = true
 	resonance = 0.0
 	overdrive_timer = 0.0
-	reset_upgrade_modifiers()
+	reset_combat_growth()
 
 
 func start_stage(start_x: float, start_y: float) -> void:
@@ -89,7 +92,8 @@ func can_shoot() -> bool:
 
 
 func mark_shot() -> void:
-	shot_cd = (0.08 if is_overdrive_active() else 0.14) * shot_cooldown_scale
+	var base_cooldown := 0.08 if is_overdrive_active() else 0.14
+	shot_cd = base_cooldown * shot_cooldown_scale
 
 
 func can_bomb() -> bool:
@@ -128,6 +132,7 @@ func register_kill() -> float:
 
 
 func hurt() -> bool:
+	_clear_partial_chip_progress()
 	if shield > 0:
 		shield -= 1
 		invuln = 1.0
@@ -158,7 +163,45 @@ func get_overdrive_duration() -> float:
 	return OVERDRIVE_DURATION + overdrive_duration_bonus
 
 
-func reset_upgrade_modifiers() -> void:
+func collect_chip(track_id: String) -> bool:
+	if not chip_levels.has(track_id) or int(chip_levels[track_id]) >= 4:
+		return false
+	chip_progress[track_id] = int(chip_progress[track_id]) + 1
+	if int(chip_progress[track_id]) < 3:
+		return false
+	chip_progress[track_id] = 0
+	chip_levels[track_id] = mini(4, int(chip_levels[track_id]) + 1)
+	_apply_chip_levels()
+	return true
+
+
+func combat_growth() -> Dictionary:
+	return {
+		"power": int(chip_levels.power),
+		"spread": int(chip_levels.spread),
+		"resonance": int(chip_levels.resonance),
+		"power_bonus": shot_power_bonus,
+	}
+
+
+func _clear_partial_chip_progress() -> void:
+	for track_id in chip_progress.keys():
+		chip_progress[track_id] = 0
+
+
+func _apply_chip_levels() -> void:
+	var power_level := int(chip_levels.power)
+	var spread_level := int(chip_levels.spread)
+	var resonance_level := int(chip_levels.resonance)
+	shot_cooldown_scale = maxf(0.58, 1.0 - float(power_level) * 0.095)
+	shot_power_bonus = 1 if power_level >= 3 else 0
+	shot_pattern = "nova" if spread_level >= 3 else "wide" if spread_level >= 1 else "twin"
+	resonance_gain_scale = 1.0 + float(resonance_level) * 0.16
+	overdrive_duration_bonus = float(resonance_level) * 0.8
+	close_kill_extend = resonance_level >= 2
+
+
+func reset_combat_growth() -> void:
 	shot_cooldown_scale = 1.0
 	overdrive_duration_bonus = 0.0
 	resonance_gain_scale = 1.0
@@ -168,3 +211,6 @@ func reset_upgrade_modifiers() -> void:
 	bomb_refund_chance = 0.0
 	shield_retaliate = false
 	close_kill_extend = false
+	shot_power_bonus = 0
+	chip_levels = {"power": 0, "spread": 0, "resonance": 0}
+	chip_progress = {"power": 0, "spread": 0, "resonance": 0}

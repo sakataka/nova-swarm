@@ -19,17 +19,17 @@ func spawn() -> void:
 	boss = {
 		"x": width / 2.0,
 		"y": hud_y + 210.0,
-		"hp": 380,
-		"max_hp": 380,
+		"hp": 4500,
+		"max_hp": 4500,
 		"t": 0.0,
 		"phase": 0,
 		"shoot": 0.5,
 		"beam": 0.0,
 		"tell": 0.0,
 		"parts": [
-			{"id": "left", "offset": Vector2(-96, 18), "hp": 34, "alive": true},
-			{"id": "right", "offset": Vector2(96, 18), "hp": 34, "alive": true},
-			{"id": "core", "offset": Vector2(0, 104), "hp": 48, "alive": true},
+			{"id": "left", "offset": Vector2(-96, 18), "hp": 180, "alive": true},
+			{"id": "right", "offset": Vector2(96, 18), "hp": 180, "alive": true},
+			{"id": "core", "offset": Vector2(0, 104), "hp": 260, "alive": true},
 		],
 	}
 

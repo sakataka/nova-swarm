@@ -1,6 +1,6 @@
 extends SceneTree
 
-const DEFAULT_SECONDS := 75.0
+const DEFAULT_SECONDS := 720.0
 const DEFAULT_SEED := 20260501
 const DEFAULT_MIN_STAGE := 1
 const DEFAULT_START_STAGE := 1
@@ -23,8 +23,10 @@ func _initialize() -> void:
 	var damage_taken := 0
 	var previous_lives: int = scene.player.lives
 	var previous_shield: int = scene.player.shield
+	var frames_elapsed := 0
 
 	for i in range(frames):
+		frames_elapsed = i + 1
 		scene._process(1.0 / 60.0)
 		if scene.stage != last_stage:
 			last_stage = scene.stage
@@ -33,7 +35,8 @@ func _initialize() -> void:
 			damage_taken += 1
 		previous_lives = scene.player.lives
 		previous_shield = scene.player.shield
-		await process_frame
+		if i % 30 == 0:
+			await process_frame
 		if scene.state == scene.GameState.GAME_OVER or scene.state == scene.GameState.VICTORY:
 			break
 
@@ -48,6 +51,7 @@ func _initialize() -> void:
 		"seed": options.seed,
 		"seconds": options.seconds,
 		"start_stage": options.start_stage + 1,
+		"elapsed_seconds": snappedf(float(frames_elapsed) / 60.0, 0.01),
 	}
 	print("AI_SIM_RESULT ", JSON.stringify(result))
 	var passed: bool = scene.state != scene.GameState.GAME_OVER and scene.stage >= options.min_stage
@@ -68,7 +72,7 @@ func _read_options() -> Dictionary:
 		elif arg.begins_with("--min-stage="):
 			options.min_stage = maxi(0, int(arg.trim_prefix("--min-stage=")) - 1)
 		elif arg.begins_with("--start-stage="):
-			options.start_stage = clampi(int(arg.trim_prefix("--start-stage=")) - 1, 0, 4)
+			options.start_stage = clampi(int(arg.trim_prefix("--start-stage=")) - 1, 0, 5)
 	return options
 
 
@@ -83,6 +87,4 @@ func _state_name(scene: Node) -> String:
 		return "GAME_OVER"
 	if scene.state == scene.GameState.VICTORY:
 		return "VICTORY"
-	if scene.state == scene.GameState.UPGRADE:
-		return "UPGRADE"
 	return "UNKNOWN"

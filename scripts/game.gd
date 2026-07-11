@@ -10,7 +10,7 @@ const BossControllerScript := preload("res://scripts/boss_controller.gd")
 const HudScript := preload("res://scripts/hud.gd")
 const AiPilotScript := preload("res://scripts/ai_pilot.gd")
 
-enum GameState { TITLE, PLAYING, PAUSED, GAME_OVER, VICTORY, UPGRADE }
+enum GameState { TITLE, PLAYING, PAUSED, GAME_OVER, VICTORY }
 enum ControlMode { MANUAL, AI }
 
 var state := GameState.TITLE
@@ -25,12 +25,10 @@ var flash := 0.0
 var hitstop := 0.0
 var stage_banner := 0.0
 var overdrive_zoom := 1.0
-var bomb_range_scale := 1.0
-var item_drop_bonus := 0.0
-var upgrade_options: Array[Dictionary] = []
-var upgrade_selected := 0
-var upgrade_timer := 0.0
 var pending_stage := 0
+var stage_wave := 0
+var wave_transition_timer := 0.0
+var stage_transition_timer := 0.0
 var stage_results: Array[Dictionary] = []
 var _stage_start_score := 0
 var _stage_start_time := 0.0
@@ -59,8 +57,6 @@ var bomb_waves: Array[Dictionary] = []
 var items: Array[Dictionary] = []
 var stage_hazards: Array[Dictionary] = []
 var score_crystals: Array[Dictionary] = []
-var ai_rival_score := 0
-var ai_rival_timer := 0.0
 var sprite_texture: Texture2D
 var background_texture: Texture2D
 var ui_texture: Texture2D
@@ -71,6 +67,8 @@ var rock_obstacle_texture: Texture2D
 var projectile_texture: Texture2D
 var final_boss_texture: Texture2D
 var boss_weakpoint_texture: Texture2D
+var enemy_fleet_texture: Texture2D
+var player_ship_texture: Texture2D
 var font: Font
 var overdrive_aura: CPUParticles2D
 var overdrive_burst: CPUParticles2D
@@ -102,15 +100,17 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	font = ThemeDB.fallback_font
 	sprite_texture = _load_sprite_texture()
-	background_texture = load("res://public/assets/backgrounds.png")
+	background_texture = load("res://public/assets/renewal/background_atlas.png")
 	ui_texture = _load_imported_or_png_texture("res://public/assets/ui_atlas.png")
 	ui_chrome_texture = _load_png_texture("res://public/assets/ui_chrome.png")
 	commander_texture = _load_imported_or_png_texture("res://public/assets/commander.png")
 	commander_fx_texture = _load_imported_or_png_texture("res://public/assets/commander_fx.png")
 	rock_obstacle_texture = _load_imported_or_png_texture("res://public/assets/rock_obstacle.png")
 	projectile_texture = _load_imported_or_png_texture("res://public/assets/projectile_atlas.png")
-	final_boss_texture = _load_imported_or_png_texture("res://public/assets/final_boss.png")
+	final_boss_texture = _load_imported_or_png_texture("res://public/assets/renewal/final_boss.png")
 	boss_weakpoint_texture = _load_imported_or_png_texture("res://public/assets/boss_weakpoints.png")
+	enemy_fleet_texture = _load_imported_or_png_texture("res://public/assets/renewal/enemy_fleet.png")
+	player_ship_texture = _load_imported_or_png_texture("res://public/assets/renewal/player_ship.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
 	_setup_overdrive_particles()
@@ -189,8 +189,6 @@ func _process(delta: float) -> void:
 		return
 	if state == GameState.PLAYING:
 		_update_game(dt)
-	elif state == GameState.UPGRADE:
-		_update_upgrade(dt)
 	_update_feedback(dt)
 	audio_manager.update_music(dt)
 	queue_redraw()
@@ -205,26 +203,13 @@ func _update_feedback(dt: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _handle_title_pointer_input(event):
 		get_viewport().set_input_as_handled()
-	elif _handle_upgrade_pointer_input(event):
-		get_viewport().set_input_as_handled()
 	elif _handle_touch_controls_input(event):
 		get_viewport().set_input_as_handled()
 	elif state == GameState.TITLE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
 		_toggle_selected_control_mode()
 		get_viewport().set_input_as_handled()
-	elif state == GameState.UPGRADE and _handle_upgrade_number_input(event):
-		get_viewport().set_input_as_handled()
-	elif state == GameState.UPGRADE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
-		_move_upgrade_selection(-1 if event.is_action_pressed("move_left") else 1)
-		get_viewport().set_input_as_handled()
-	elif state == GameState.UPGRADE and event.is_action_pressed("ui_accept"):
-		_apply_selected_upgrade()
-		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_accept") and state in [GameState.TITLE, GameState.GAME_OVER, GameState.VICTORY]:
 		reset()
-		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("toggle_ai") and state in [GameState.PLAYING, GameState.PAUSED]:
-		_toggle_control_mode()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("pause_game") and state == GameState.PLAYING:
 		state = GameState.PAUSED
@@ -246,21 +231,6 @@ func _handle_title_pointer_input(event: InputEvent) -> bool:
 	if position == null:
 		return false
 	return _select_title_mode_at(position)
-
-
-func _handle_upgrade_pointer_input(event: InputEvent) -> bool:
-	if state != GameState.UPGRADE:
-		return false
-	var position: Variant = _pointer_press_position(event)
-	if position == null:
-		return false
-	var card_hitboxes := _upgrade_card_hitboxes()
-	for i in range(card_hitboxes.size()):
-		if Rect2(card_hitboxes[i]).has_point(position):
-			upgrade_selected = i
-			_apply_selected_upgrade()
-			return true
-	return false
 
 
 func _pointer_press_position(event: InputEvent) -> Variant:
@@ -356,14 +326,10 @@ func reset() -> void:
 	stage = 0
 	score = 0
 	difficulty = 1.0
-	bomb_range_scale = 1.0
-	item_drop_bonus = 0.0
-	upgrade_options.clear()
-	upgrade_selected = 0
-	upgrade_timer = 0.0
+	stage_wave = 0
+	wave_transition_timer = 0.0
+	stage_transition_timer = 0.0
 	stage_results.clear()
-	ai_rival_score = 0
-	ai_rival_timer = 0.0
 	control_mode = selected_control_mode
 	player.reset_run(Config.W / 2.0, Config.PLAYER_Y)
 	state = GameState.PLAYING
@@ -375,6 +341,9 @@ func reset() -> void:
 
 func load_stage(index: int) -> void:
 	stage = index
+	stage_wave = 0
+	wave_transition_timer = 0.0
+	stage_transition_timer = 0.0
 	stage_timer = 0.0
 	stage_banner = 1.65
 	overdrive_zoom = 1.0
@@ -400,8 +369,29 @@ func load_stage(index: int) -> void:
 		return
 
 	audio_manager.play_music("stage_pressure" if index >= 2 else "stage_drive")
-	swarm.load_stage(st, Config.ENEMY_STATS, difficulty)
+	swarm.load_stage(st, Config.ENEMY_STATS, difficulty, stage_wave)
 	_setup_stage_gimmicks()
+
+
+func _start_wave(next_wave: int) -> void:
+	stage_wave = next_wave
+	wave_transition_timer = 0.0
+	projectiles.clear_enemy_bullets()
+	var st: Dictionary = Config.STAGES[stage]
+	swarm.load_stage(st, Config.ENEMY_STATS, difficulty, stage_wave)
+	stage_banner = 0.9
+	audio_manager.play_sfx("wave")
+
+
+func _update_stage_progression(dt: float) -> void:
+	if wave_transition_timer > 0.0:
+		wave_transition_timer = maxf(0.0, wave_transition_timer - dt)
+		if wave_transition_timer <= 0.0:
+			_start_wave(stage_wave + 1)
+	if stage_transition_timer > 0.0:
+		stage_transition_timer = maxf(0.0, stage_transition_timer - dt)
+		if stage_transition_timer <= 0.0:
+			load_stage(pending_stage)
 
 
 func _recalculate_difficulty() -> void:
@@ -412,7 +402,7 @@ func _recalculate_difficulty() -> void:
 
 func _setup_stage_gimmicks() -> void:
 	stage_hazards.clear()
-	if stage == 2:
+	if stage == 3:
 		for i in range(6):
 			stage_hazards.append({
 				"kind": "rock",
@@ -423,29 +413,29 @@ func _setup_stage_gimmicks() -> void:
 				"t": float(i) * 0.7,
 				"seed": i * 37 + 11,
 			})
-	elif stage == 3:
+	elif stage == 4:
 		stage_hazards.append({"kind": "plasma_left", "x": 34.0, "t": 0.0})
 		stage_hazards.append({"kind": "plasma_right", "x": Config.W - 34.0, "t": 0.0})
 
 
 func _update_stage_gimmicks(dt: float) -> void:
-	if stage == 2:
+	if stage == 3:
 		for hazard in stage_hazards:
 			hazard.t += dt
 			hazard.y += sin(stage_timer * 0.7 + hazard.t) * 10.0 * dt
 			hazard.x += cos(stage_timer * 0.5 + hazard.t) * 14.0 * dt
 			hazard.x = clampf(hazard.x, 92.0, Config.W - 92.0)
 		_check_rock_collisions()
-	elif stage == 3:
+	elif stage == 4:
 		_update_plasma_reflectors()
 	if player.is_overdrive_active():
 		_convert_overdrive_bullets(dt)
 	_update_score_crystals(dt)
-	_update_ai_rival(dt)
 
 
 func _update_game(dt: float) -> void:
 	stage_timer += dt
+	_update_stage_progression(dt)
 	var command := _read_player_command()
 	player.update(dt, command["move_vector"])
 
@@ -468,13 +458,6 @@ func _update_game(dt: float) -> void:
 	_check_collisions()
 	_stage_max_combo = maxi(_stage_max_combo, player.combo)
 	_check_stage_end()
-
-
-func _update_upgrade(dt: float) -> void:
-	upgrade_timer += dt
-	if control_mode == ControlMode.AI and upgrade_timer >= 0.75:
-		upgrade_selected = _choose_ai_upgrade_index()
-		_apply_selected_upgrade()
 
 
 func _update_overdrive_feedback() -> void:
@@ -521,115 +504,9 @@ func _toggle_control_mode() -> void:
 	selected_control_mode = control_mode
 
 
-func _move_upgrade_selection(direction: int) -> void:
-	if upgrade_options.is_empty():
-		return
-	upgrade_selected = posmod(upgrade_selected + direction, upgrade_options.size())
-
-
-func _handle_upgrade_number_input(event: InputEvent) -> bool:
-	if not (event is InputEventKey):
-		return false
-	var key_event := event as InputEventKey
-	if not key_event.pressed or key_event.echo:
-		return false
-	if key_event.keycode < KEY_1 or key_event.keycode > KEY_3:
-		return false
-	var selected_index := int(key_event.keycode - KEY_1)
-	if selected_index >= upgrade_options.size():
-		return false
-	upgrade_selected = selected_index
-	_apply_selected_upgrade()
-	return true
-
-
-func _begin_upgrade(next_stage: int) -> void:
-	pending_stage = next_stage
-	state = GameState.UPGRADE
-	upgrade_selected = 0
-	upgrade_timer = 0.0
-	upgrade_options = _roll_upgrade_options()
-	audio_manager.set_music_overdriven(false)
-	if overdrive_aura:
-		overdrive_aura.emitting = false
-	audio_manager.set_music_ducked(true)
-
-
-func _roll_upgrade_options() -> Array[Dictionary]:
-	var pool: Array = Config.UPGRADE_POOL.duplicate(true)
-	pool.shuffle()
-	var result: Array[Dictionary] = []
-	for i in range(mini(3, pool.size())):
-		result.append(pool[i])
-	return result
-
-
-func _choose_ai_upgrade_index() -> int:
-	var best_index := 0
-	var best_score := -INF
-	for i in range(upgrade_options.size()):
-		var option: Dictionary = upgrade_options[i]
-		var upgrade_score := _score_ai_upgrade(str(option.id))
-		if upgrade_score > best_score:
-			best_score = upgrade_score
-			best_index = i
-	return best_index
-
-
-func _score_ai_upgrade(upgrade_id: String) -> float:
-	if upgrade_id == "shield_burst":
-		return 9.0 if player.shield <= 0 else 5.5 if player.shield < player.shield_max else 2.8
-	if upgrade_id == "bomb_refund":
-		return 8.2 if player.bombs <= 1 else 5.8 if player.bombs <= 3 else 3.6
-	if upgrade_id == "spread":
-		return 7.9 if player.shot_pattern != "wide" else 2.4
-	if upgrade_id == "rapid":
-		return 7.4 - (1.0 - player.shot_cooldown_scale) * 8.0
-	if upgrade_id == "graze_core":
-		return 7.2 if not player.graze_chain_bonus else 3.0
-	if upgrade_id == "overdrive":
-		return 6.2 if player.overdrive_duration_bonus < 3.4 else 3.2
-	if upgrade_id == "drop":
-		return 5.6 if item_drop_bonus < 0.12 else 3.0
-	return 0.0
-
-
-func _apply_selected_upgrade() -> void:
-	if state != GameState.UPGRADE or upgrade_options.is_empty():
-		return
-	var upgrade: Dictionary = upgrade_options[upgrade_selected]
-	_apply_upgrade(upgrade.id)
-	upgrade_options.clear()
-	audio_manager.set_music_ducked(false)
-	state = GameState.PLAYING
-	load_stage(pending_stage)
-
-
-func _apply_upgrade(upgrade_id: String) -> void:
-	if upgrade_id == "rapid":
-		player.shot_cooldown_scale = maxf(0.68, player.shot_cooldown_scale * 0.88)
-	elif upgrade_id == "spread":
-		player.shot_pattern = "wide"
-	elif upgrade_id == "overdrive":
-		player.overdrive_duration_bonus += 1.1
-		player.close_kill_extend = true
-	elif upgrade_id == "graze_core":
-		player.resonance_gain_scale *= 1.18
-		player.graze_chain_bonus = true
-	elif upgrade_id == "bomb_refund":
-		bomb_range_scale += 0.16
-		player.bomb_refund_chance = minf(0.55, player.bomb_refund_chance + 0.28)
-	elif upgrade_id == "shield_burst":
-		player.shield_max = mini(5, player.shield_max + 1)
-		player.shield = mini(player.shield_max, player.shield + 1)
-		player.shield_retaliate = true
-	elif upgrade_id == "drop":
-		item_drop_bonus += 0.045
-
-
 func _fire_player() -> void:
 	player.mark_shot()
-	projectiles.fire_player(player.x, player.y, player.is_overdrive_active(), player.shot_pattern)
+	projectiles.fire_player(player.x, player.y, player.is_overdrive_active(), player.shot_pattern, player.combat_growth())
 	audio_manager.play_sfx("shot")
 
 
@@ -655,7 +532,7 @@ func _use_bomb() -> void:
 	_add_shake(3.0)
 	_add_flash(0.42, 0.18)
 	hitstop = 0.025
-	var blast := {"x": player.x, "y": player.y - 54.0, "t": 0.0, "width": 172.0 * bomb_range_scale}
+	var blast := {"x": player.x, "y": player.y - 54.0, "t": 0.0, "width": 172.0}
 	bomb_waves.append(blast)
 	var bomb_kills := 0
 
@@ -669,10 +546,12 @@ func _use_bomb() -> void:
 		if absf(enemy.x - blast.x) < blast.width * 0.54 and enemy.y < player.y - 22.0:
 			enemy.hp = 0
 			bomb_kills += 1
-			explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer"]})
+			explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer", "mid_lancer", "mid_orbit", "mid_anchor"]})
 			score += int(enemy.score * 0.6)
 			if enemy.kind == "commander":
 				_handle_commander_defeat(enemy)
+			elif enemy.kind in ["mid_lancer", "mid_orbit", "mid_anchor"]:
+				_handle_midboss_defeat(enemy)
 			else:
 				_maybe_drop_item(enemy, true)
 	swarm.remove_dead()
@@ -726,7 +605,7 @@ func _check_rock_collisions() -> void:
 		if hazard.hp <= 0:
 			score += 320
 			explosions.append({"x": hazard.x, "y": hazard.y, "t": 0.0, "big": true})
-			if randf() < 0.34 + item_drop_bonus:
+			if randf() < 0.34:
 				items.append({"kind": "shield", "x": hazard.x, "y": hazard.y, "vy": 78.0, "t": 0.0})
 			continue
 		if player.invuln <= 0.0 and Vector2(player.x, player.y).distance_to(Vector2(hazard.x, hazard.y)) < float(hazard.r) + 24.0:
@@ -784,35 +663,39 @@ func _update_score_crystals(dt: float) -> void:
 	score_crystals = score_crystals.filter(func(crystal: Dictionary) -> bool: return crystal.y < Config.H + 100.0 and crystal.t < 6.0)
 
 
-func _update_ai_rival(dt: float) -> void:
-	ai_rival_timer += dt
-	if ai_rival_timer >= 0.5:
-		ai_rival_timer = 0.0
-		var pressure := 90 + int(stage) * 18
-		if player.combo >= 4:
-			pressure += 20
-		ai_rival_score += pressure
-
-
 func _maybe_drop_item(enemy: Dictionary, from_bomb: bool) -> void:
-	var base_chance := 0.08 + item_drop_bonus
+	var is_midboss: bool = enemy.kind in ["mid_lancer", "mid_orbit", "mid_anchor"]
+	var base_chance := 0.2
 	if enemy.kind in ["armor", "saucer"]:
-		base_chance += 0.06
+		base_chance += 0.08
 	if enemy.kind == "commander":
-		base_chance += 0.46
+		base_chance = 1.0
+	if is_midboss:
+		base_chance = 1.0
 	if player.lives <= 1:
 		base_chance += 0.07
 	if from_bomb:
 		base_chance *= 0.55
 	if randf() > base_chance:
 		return
-	var roll := randf()
-	var item_kind := "bomb"
-	if player.lives <= 2 and roll < 0.42:
+	var item_kind := _growth_chip_for_enemy(enemy)
+	var recovery_roll := randf()
+	if player.lives <= 1 and recovery_roll < 0.32:
 		item_kind = "life"
-	elif roll < 0.72:
+	elif player.shield <= 0 and recovery_roll < 0.38:
 		item_kind = "shield"
 	items.append({"kind": item_kind, "x": enemy.x, "y": enemy.y, "vy": 88.0, "t": 0.0})
+
+
+func _growth_chip_for_enemy(enemy: Dictionary) -> String:
+	if enemy.kind in ["armor", "mid_anchor"]:
+		return "power"
+	if enemy.kind in ["diver", "saucer", "mid_lancer"]:
+		return "spread"
+	if enemy.kind in ["zig", "commander", "mid_orbit"]:
+		return "resonance"
+	var tracks := ["power", "spread", "resonance"]
+	return tracks[randi() % tracks.size()]
 
 
 func _check_collisions() -> void:
@@ -836,13 +719,25 @@ func _check_collisions() -> void:
 					if close_bonus > 0.45:
 						multiplier *= 1.12
 					score += int(enemy.score * multiplier)
-					explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer", "commander"]})
+					var is_midboss: bool = enemy.kind in ["mid_lancer", "mid_orbit", "mid_anchor"]
+					explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer", "commander"] or is_midboss})
 					if enemy.kind == "commander":
 						_handle_commander_defeat(enemy)
+					elif is_midboss:
+						_handle_midboss_defeat(enemy)
 					else:
 						_maybe_drop_item(enemy, false)
-					audio_manager.play_sfx("boom")
+					if is_midboss:
+						_add_shake(4.5)
+						_add_flash(0.46, 0.055)
+						audio_manager.play_sfx("midboss_break")
+					else:
+						_add_shake(1.8)
+						hitstop = maxf(hitstop, 0.025)
+						audio_manager.play_sfx("boom")
 				else:
+					if enemy.kind in ["armor", "commander", "mid_lancer", "mid_orbit", "mid_anchor"]:
+						hitstop = maxf(hitstop, 0.012)
 					audio_manager.play_sfx("hit")
 				break
 
@@ -883,11 +778,16 @@ func _check_collisions() -> void:
 
 	for item in items:
 		if Vector2(item.x, item.y).distance_to(Vector2(player.x, player.y)) < 42.0:
-			player.apply_item(item.kind)
+			var leveled_up := false
+			if Config.CHIP_TRACKS.has(item.kind):
+				leveled_up = player.collect_chip(item.kind)
+			else:
+				player.apply_item(item.kind)
 			item.y = Config.H + 999.0
-			score += 150
-			flash = maxf(flash, 0.18)
-			audio_manager.play_sfx("clear")
+			score += 300 if leveled_up else 120
+			flash = maxf(flash, 0.25 if leveled_up else 0.12)
+			_add_shake(2.2 if leveled_up else 0.5)
+			audio_manager.play_sfx("level_up" if leveled_up else "chip")
 	items = items.filter(func(item: Dictionary) -> bool: return item.y < Config.H + 100.0)
 
 
@@ -945,11 +845,25 @@ func _check_stage_end() -> void:
 		return
 
 	if not Config.STAGES[stage].boss and swarm.enemies.is_empty():
-		score += 1000 + stage * 500 + (900 if player.no_miss_stage else 0)
+		if wave_transition_timer > 0.0 or stage_transition_timer > 0.0:
+			return
+		var wave_count := int(Config.STAGES[stage].get("waves", 1))
+		if stage_wave + 1 < wave_count:
+			score += 260 + stage_wave * 90
+			wave_transition_timer = 0.85
+			projectiles.clear_enemy_bullets()
+			audio_manager.play_sfx("wave")
+			return
+		score += 1200 + stage * 550 + (900 if player.no_miss_stage else 0)
 		_record_stage_result()
 		player.bombs = mini(5, player.bombs + 1)
-		audio_manager.play_sfx("clear")
-		_begin_upgrade(stage + 1)
+		player.shield = mini(player.shield_max, player.shield + 1)
+		if player.lives <= 2:
+			player.lives += 1
+		audio_manager.play_sfx("stage_clear")
+		pending_stage = stage + 1
+		stage_transition_timer = 1.35
+		stage_banner = 1.35
 
 
 func _start_stage_metrics() -> void:
@@ -1039,12 +953,18 @@ func _handle_commander_defeat(enemy: Dictionary) -> void:
 	_drop_commander_reward(enemy)
 
 
+func _handle_midboss_defeat(enemy: Dictionary) -> void:
+	player.add_resonance(34.0)
+	player.shield = mini(player.shield_max, player.shield + 1)
+	for i in range(8):
+		explosions.append({"x": enemy.x + sin(float(i) * 1.9) * 72.0, "y": enemy.y + cos(float(i) * 1.5) * 58.0, "t": -float(i) * 0.022, "big": true})
+	projectiles.clear_enemy_bullets()
+	for offset in [-28.0, 28.0]:
+		items.append({"kind": _growth_chip_for_enemy(enemy), "x": enemy.x + offset, "y": enemy.y, "vy": 72.0, "t": 0.0})
+
+
 func _drop_commander_reward(enemy: Dictionary) -> void:
-	var item_kind := "shield"
-	if player.bombs <= 2:
-		item_kind = "bomb"
-	if player.lives <= 2:
-		item_kind = "life"
+	var item_kind := _growth_chip_for_enemy(enemy)
 	items.append({"kind": item_kind, "x": enemy.x, "y": enemy.y, "vy": 82.0, "t": 0.0})
 
 
@@ -1058,18 +978,19 @@ func _add_flash(amount: float, hitstop_time: float) -> void:
 
 
 func _draw() -> void:
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_rect(Rect2(0, 0, Config.W, Config.H), Color("#02040c"))
 	var shake := Vector2.ZERO
 	if screen_shake > 0.0:
 		shake = Vector2(randf_range(-screen_shake, screen_shake), randf_range(-screen_shake, screen_shake)).round()
 	var zoom_offset := Vector2(Config.W, Config.H) * 0.5 * (1.0 - overdrive_zoom)
 	draw_set_transform(shake + zoom_offset, 0.0, Vector2(overdrive_zoom, overdrive_zoom))
-	draw_rect(Rect2(0, 0, Config.W, Config.H), Color("#04050a"))
 	_draw_background()
-	hud.draw_hud(self, font, score, stage, player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), ui_texture, ui_regions, audio_manager.muted)
-	_draw_control_mode_badge()
-	_draw_ai_rival()
 	_draw_playfield()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if state in [GameState.PLAYING, GameState.PAUSED]:
+		hud.draw_hud(self, font, score, stage, stage_wave, int(Config.STAGES[stage].get("waves", 1)), player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), player.chip_levels, player.chip_progress, audio_manager.muted)
+		_draw_control_mode_badge()
 	if flash > 0.0:
 		draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.34))
 	if stage_banner > 0.0 and state == GameState.PLAYING:
@@ -1083,9 +1004,14 @@ func _draw() -> void:
 
 func _draw_background() -> void:
 	var st: Dictionary = Config.STAGES[stage]
-	var panel: Rect2 = Config.BG_PANELS[st.bg]
 	if background_texture:
-		draw_texture_rect_region(background_texture, Rect2(0, Config.HUD, Config.W, Config.PLAY_H), panel, Color(st.tint, 0.92))
+		var cell_width := float(background_texture.get_width()) / 2.0
+		var cell_height := float(background_texture.get_height()) / 3.0
+		var crop_width := cell_height * Config.W / Config.PLAY_H
+		var source_x := float(stage % 2) * cell_width + (cell_width - crop_width) * 0.5
+		var source_y := float(stage / 2) * cell_height
+		var panel := Rect2(source_x, source_y, crop_width, cell_height)
+		draw_texture_rect_region(background_texture, Rect2(0, Config.HUD, Config.W, Config.PLAY_H), panel, Color(st.tint, 0.82))
 	else:
 		draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color("#081323"))
 	draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(0, 0, 0, 0.34))
@@ -1125,7 +1051,11 @@ func _draw_player() -> void:
 		var pulse := 0.5 + sin(stage_timer * 18.0) * 0.5
 		draw_arc(Vector2(player.x, player.y), 64.0 + pulse * 8.0, 0.0, TAU, 64, Color(1.0, 0.86, 0.28, 0.48), 4.0)
 		draw_arc(Vector2(player.x, player.y), 78.0 - pulse * 6.0, 0.0, TAU, 64, Color(1.0, 0.32, 0.9, 0.32), 2.0)
-	_draw_sprite("player", player.x, player.y, 150, 150, tint)
+	if player_ship_texture:
+		var size := 118.0 if not player.is_overdrive_active() else 126.0
+		draw_texture_rect(player_ship_texture, Rect2(player.x - size * 0.5, player.y - size * 0.5, size, size), false, tint)
+	else:
+		_draw_sprite("player", player.x, player.y, 150, 150, tint)
 	if player.shield > 0:
 		_draw_player_shield()
 
@@ -1152,6 +1082,9 @@ func _draw_player_shield() -> void:
 
 
 func _draw_enemy(enemy: Dictionary) -> void:
+	if enemy_fleet_texture and enemy.kind in ["bug", "diver", "zig", "armor", "saucer", "commander", "mid_lancer", "mid_orbit", "mid_anchor"]:
+		_draw_renewal_enemy(enemy)
+		return
 	if enemy.kind == "commander":
 		_draw_commander(enemy)
 		return
@@ -1159,6 +1092,30 @@ func _draw_enemy(enemy: Dictionary) -> void:
 	if enemy.max_hp > 1:
 		tint = Color(1.0, 0.85 + 0.15 * float(enemy.hp) / float(enemy.max_hp), 0.72 + 0.28 * float(enemy.hp) / float(enemy.max_hp), 1.0)
 	_draw_sprite(enemy.kind, enemy.x, enemy.y, enemy.size * 2.35, enemy.size * 2.35, tint)
+
+
+func _draw_renewal_enemy(enemy: Dictionary) -> void:
+	var order := ["bug", "diver", "zig", "armor", "saucer", "commander", "mid_lancer", "mid_orbit", "mid_anchor"]
+	var index := order.find(str(enemy.kind))
+	var cell := 1254.0 / 3.0
+	var region := Rect2(float(index % 3) * cell, float(index / 3) * cell, cell, cell)
+	var is_midboss: bool = enemy.kind in ["mid_lancer", "mid_orbit", "mid_anchor"]
+	var draw_size := float(enemy.size) * (1.92 if is_midboss else 1.74)
+	var pulse := 1.0 + sin(stage_timer * 5.0 + float(enemy.id)) * (0.025 if is_midboss else 0.012)
+	var tint := Color.WHITE
+	if enemy.max_hp > 1 and not is_midboss:
+		var hp_ratio := clampf(float(enemy.hp) / float(enemy.max_hp), 0.0, 1.0)
+		tint = Color(1.0, 0.78 + hp_ratio * 0.22, 0.78 + hp_ratio * 0.22, 1.0)
+	if is_midboss:
+		var aura_color: Color = Config.ENEMY_STATS[enemy.kind].color
+		draw_circle(Vector2(enemy.x, enemy.y), draw_size * 0.48, Color(aura_color, 0.08))
+		draw_arc(Vector2(enemy.x, enemy.y), draw_size * 0.5, 0.0, TAU, 44, Color(aura_color, 0.5), 3.0)
+	draw_texture_rect_region(enemy_fleet_texture, Rect2(enemy.x - draw_size * pulse * 0.5, enemy.y - draw_size * pulse * 0.5, draw_size * pulse, draw_size * pulse), region, tint)
+	if enemy.max_hp > 2:
+		var bar_width := 116.0 if is_midboss else 74.0
+		var hp_ratio := clampf(float(enemy.hp) / maxf(1.0, float(enemy.max_hp)), 0.0, 1.0)
+		draw_rect(Rect2(enemy.x - bar_width * 0.5, enemy.y + draw_size * 0.48, bar_width, 5.0), Color(1, 1, 1, 0.13))
+		draw_rect(Rect2(enemy.x - bar_width * 0.5, enemy.y + draw_size * 0.48, bar_width * hp_ratio, 5.0), Config.ENEMY_STATS[enemy.kind].color)
 
 
 func _draw_commander(enemy: Dictionary) -> void:
@@ -1248,21 +1205,14 @@ func _draw_boss() -> void:
 
 
 func _draw_boss_weakpoint(part: Dictionary, part_pos: Vector2) -> void:
-	if boss_weakpoint_texture:
-		var region := _boss_weakpoint_region(str(part.id), bool(part.alive))
-		var size := 76.0 if part.id == "core" else 58.0
-		var tint := Color.WHITE
-		if part.alive:
-			var pulse := 0.82 + sin(stage_timer * 8.0 + part_pos.x * 0.03) * 0.18
-			tint = Color(1.0, 0.82 + pulse * 0.18, 0.58 + pulse * 0.16, 0.92)
-		else:
-			tint = Color(0.62, 0.58, 0.58, 0.78)
-		draw_texture_rect_region(boss_weakpoint_texture, Rect2(part_pos.x - size * 0.5, part_pos.y - size * 0.5, size, size), region, tint)
-		return
-	var part_color: Color = Color("#fff06a") if part.alive else Color(0.35, 0.35, 0.38, 0.58)
-	draw_arc(part_pos, 34.0, 0.0, TAU, 32, Color(part_color, 0.62), 3.0)
+	var pulse := 0.5 + sin(stage_timer * 8.0 + part_pos.x * 0.03) * 0.5
+	var part_color: Color = Color("#42d9ff") if part.alive else Color(0.2, 0.26, 0.34, 0.62)
+	var radius := 27.0 if part.id == "core" else 22.0
+	draw_circle(part_pos, radius + 6.0, Color(part_color, 0.08 + pulse * 0.05))
+	draw_arc(part_pos, radius, 0.0, TAU, 32, Color(part_color, 0.72), 3.0)
+	draw_arc(part_pos, radius + 7.0, -PI * 0.35, PI * 0.7, 18, Color(Config.UI_AMBER, 0.38 if part.alive else 0.1), 2.0)
 	if part.alive:
-		draw_circle(part_pos, 8.0, Color(part_color, 0.86))
+		draw_circle(part_pos, 7.0 + pulse * 2.0, Color(0.82, 0.98, 1.0, 0.9))
 
 
 func _boss_weakpoint_region(part_id: String, alive: bool) -> Rect2:
@@ -1381,6 +1331,21 @@ func _draw_item(item: Dictionary) -> void:
 	var color := Color("#ff6f88")
 	var label := "+"
 	var region_key := "life"
+	if Config.CHIP_TRACKS.has(item.kind):
+		var track: Dictionary = Config.CHIP_TRACKS[item.kind]
+		color = track.color
+		draw_circle(center, 25.0, Color(color, 0.12))
+		draw_arc(center, 21.0 + sin(item.t * 6.0) * 2.0, 0.0, TAU, 24, Color(color, 0.9), 2.0)
+		if track.shape == "triangle":
+			draw_colored_polygon(PackedVector2Array([center + Vector2(0, -13), center + Vector2(12, 10), center + Vector2(-12, 10)]), color)
+		elif track.shape == "fan":
+			draw_colored_polygon(PackedVector2Array([center + Vector2(0, 12), center + Vector2(-15, -8), center, center + Vector2(15, -8)]), color)
+		else:
+			var points := PackedVector2Array()
+			for i in range(6):
+				points.append(center + Vector2(cos(TAU * i / 6.0), sin(TAU * i / 6.0)) * 13.0)
+			draw_colored_polygon(points, color)
+		return
 	if item.kind == "bomb":
 		color = Color("#ff7af0")
 		label = "B"
@@ -1407,12 +1372,12 @@ func _draw_sprite(key: String, cx: float, cy: float, dw: float, dh: float, tint 
 
 
 func _draw_infection_overlay() -> void:
-	draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(0.0, 0.0, 0.0, 0.68))
-	draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(Config.UI_DEEP_RED, 0.2))
+	draw_rect(Rect2(0, 0, Config.W, Config.H), Color(0.0, 0.0, 0.03, 0.72))
+	draw_rect(Rect2(0, 0, Config.W, Config.H), Color(Config.UI_MAGENTA, 0.06))
 	for i in range(12):
-		var y := Config.HUD + 18.0 + float(i) * 52.0
+		var y := 18.0 + float(i) * 58.0
 		var alpha := 0.08 + float(i % 3) * 0.025
-		draw_line(Vector2(0, y), Vector2(Config.W, y), Color(Config.UI_RED, alpha), 1.0)
+		draw_line(Vector2(0, y), Vector2(Config.W, y), Color(Config.UI_CYAN, alpha), 1.0)
 	for i in range(8):
 		var x := fmod(stage_timer * 18.0 + float(i) * 137.0, Config.W)
 		draw_line(Vector2(x, Config.HUD), Vector2(x - 180.0, Config.H), Color(Config.UI_RED, 0.06), 1.0)
@@ -1472,9 +1437,6 @@ func _draw_terminal_button(rect: Rect2, label: String, sublabel: String, accent:
 
 func _draw_overlay() -> void:
 	_draw_infection_overlay()
-	if state == GameState.UPGRADE:
-		_draw_upgrade_overlay()
-		return
 	var title := "NOVA SWARM"
 	if state == GameState.PAUSED:
 		title = "PAUSED"
@@ -1487,12 +1449,12 @@ func _draw_overlay() -> void:
 		_draw_terminal_panel(Rect2(86, Config.HUD + 58, 788, 234), Config.UI_RED, 0.5)
 		_draw_core_glyph(Vector2(480, Config.HUD + 176), 80.0, Config.UI_RED, true)
 		draw_texture_rect_region(ui_texture, Rect2(124, Config.HUD + 74, 712, 218), ui_regions.logo, Color(1, 1, 1, 0.96))
-		hud.draw_centered(self, font, "CITADEL CORE SIGNAL LOCKED", Config.HUD + 286, 13, Color(Config.UI_RED, 0.86))
+		hud.draw_centered(self, font, "AURORA FRONT ONLINE", Config.HUD + 286, 13, Color(Config.UI_CYAN, 0.9))
 		_draw_title_mode_select(Config.HUD + 330.0)
 		_draw_title_start_button()
-		hud.draw_centered(self, font, sub, Config.HUD + 504, 15, Config.UI_MAGENTA)
-		hud.draw_centered(self, font, "SURVIVE THE SWARM / STEAL RESONANCE / BREAK THE CORE", Config.HUD + 538, 16, Color(Config.UI_TEXT, 0.84))
-		hud.draw_centered(self, font, "SPACE SHOT / B BOMB / E OVERDRIVE / T AI / P PAUSE / M MUTE", Config.HUD + 568, 12, Config.UI_TEXT_DIM)
+		hud.draw_centered(self, font, sub, Config.HUD + 512, 15, Config.UI_MAGENTA)
+		hud.draw_centered(self, font, "COLLECT POWER / BREAK THE SIEGE / IGNITE OVERDRIVE", Config.HUD + 548, 16, Color(Config.UI_TEXT, 0.84))
+		hud.draw_centered(self, font, "SPACE SHOT / B BOMB / E OVERDRIVE / P PAUSE / M MUTE", Config.HUD + 580, 12, Config.UI_TEXT_DIM)
 	elif state == GameState.VICTORY and ui_texture:
 		_draw_terminal_panel(Rect2(118, Config.HUD + 48, 724, 214), Config.UI_CYAN, 0.58)
 		draw_texture_rect_region(ui_texture, Rect2(146, Config.HUD + 62, 668, 210), ui_regions.ending, Color(1, 1, 1, 0.88))
@@ -1510,45 +1472,6 @@ func _draw_overlay() -> void:
 			_draw_results_table(Config.HUD + 334.0)
 		else:
 			hud.draw_centered(self, font, "CORE SIGNAL LOST / REBUILD AND REDEPLOY", Config.HUD + 340, 17, Color(Config.UI_TEXT, 0.82))
-
-
-func _draw_upgrade_overlay() -> void:
-	var last_rank := ""
-	if not stage_results.is_empty():
-		var last_result: Dictionary = stage_results[stage_results.size() - 1]
-		last_rank = "STAGE " + str(int(last_result.stage) + 1) + " RANK " + str(last_result.rank)
-	_draw_core_glyph(Vector2(Config.W * 0.5, Config.HUD + 102.0), 52.0, Config.UI_RED, true)
-	_draw_arcade_title("CORE MUTATION", Config.HUD + 138.0, 42, Config.UI_TEXT)
-	hud.draw_centered(self, font, last_rank, Config.HUD + 188.0, 20, Config.UI_AMBER)
-	var card_hitboxes := _upgrade_card_hitboxes()
-	for i in range(upgrade_options.size()):
-		var option: Dictionary = upgrade_options[i]
-		var card: Rect2 = card_hitboxes[i]
-		var x := card.position.x
-		var y := card.position.y
-		var card_w := card.size.x
-		var card_h := card.size.y
-		var selected := i == upgrade_selected
-		var color := Config.UI_AMBER if selected else Config.UI_RED
-		_draw_terminal_panel(Rect2(x, y, card_w, card_h), color, 0.78, selected)
-		_draw_chrome_icon("warning" if selected else "core", Rect2(x + 18.0, y + 20.0, 42.0, 42.0), Color(1, 1, 1, 0.78))
-		_draw_centered_in_width("NODE " + str(i + 1), x + 10.0, 62.0, y + 86.0, 11, Config.UI_TEXT_DIM)
-		draw_string(font, Vector2(x + 76.0, y + 48.0), str(option.name), HORIZONTAL_ALIGNMENT_LEFT, -1, 19, color)
-		draw_string(font, Vector2(x + 76.0, y + 82.0), str(option.desc), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(Config.UI_TEXT, 0.82))
-		if selected:
-			draw_string(font, Vector2(x + 76.0, y + 120.0), "SELECTED MUTATION", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(Config.UI_AMBER, 0.92))
-	hud.draw_centered(self, font, "1-3 / LEFT / RIGHT / ENTER / TAP CARD", Config.HUD + 468.0, 18, Config.UI_MAGENTA)
-
-
-func _upgrade_card_hitboxes() -> Array[Rect2]:
-	var card_w := 266.0
-	var card_h := 164.0
-	var gap := 22.0
-	var start_x := (Config.W - card_w * 3.0 - gap * 2.0) / 2.0
-	var cards: Array[Rect2] = []
-	for i in range(upgrade_options.size()):
-		cards.append(Rect2(start_x + float(i) * (card_w + gap), Config.HUD + 246.0, card_w, card_h))
-	return cards
 
 
 func _draw_controls_panel(y: float) -> void:
@@ -1693,17 +1616,9 @@ func _touch_pause_hitbox() -> Rect2:
 	return Rect2(Config.W - 86.0, Config.HUD + 12.0, Config.UI_TOUCH_PAUSE_SIZE, Config.UI_TOUCH_PAUSE_SIZE)
 
 
-func _draw_ai_rival() -> void:
-	if state != GameState.PLAYING:
-		return
-	var label := "AI RIVAL " + str(ai_rival_score).pad_zeros(7)
-	var color := Config.UI_AMBER if ai_rival_score > score else Color(Config.UI_TEXT, 0.62)
-	draw_string(font, Vector2(654.0, 66.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
-
-
 func _draw_title_mode_select(y: float) -> void:
 	var manual := "MANUAL"
-	var ai := "AI PILOT"
+	var ai := "AI DEMO"
 	var manual_color := Config.UI_AMBER if selected_control_mode == ControlMode.MANUAL else Color(Config.UI_TEXT, 0.58)
 	var ai_color := Config.UI_AMBER if selected_control_mode == ControlMode.AI else Color(Config.UI_TEXT, 0.58)
 	var manual_text := manual
@@ -1723,7 +1638,7 @@ func _draw_title_start_button() -> void:
 
 
 func _title_start_hitbox() -> Rect2:
-	return Rect2((Config.W - 256.0) * 0.5, Config.HUD + 414.0, 256.0, 78.0)
+	return Rect2((Config.W - 256.0) * 0.5, Config.HUD + 404.0, 256.0, 78.0)
 
 
 func _draw_title_mode_button(rect: Rect2, selected: bool, color: Color) -> void:
@@ -1732,7 +1647,7 @@ func _draw_title_mode_button(rect: Rect2, selected: bool, color: Color) -> void:
 
 func _title_mode_hitboxes(y: float) -> Dictionary:
 	var manual_text := "MANUAL"
-	var ai_text := "AI PILOT"
+	var ai_text := "AI DEMO"
 	var positions := _title_mode_text_positions(y, manual_text, ai_text)
 	var manual_size := font.get_string_size(manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
 	var ai_size := font.get_string_size(ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
@@ -1755,7 +1670,7 @@ func _title_mode_text_positions(y: float, manual_text: String, ai_text: String) 
 
 
 func _control_mode_label(mode: int) -> String:
-	return "AI PILOT" if mode == ControlMode.AI else "MANUAL"
+	return "AI DEMO" if mode == ControlMode.AI else "MANUAL"
 
 
 func _draw_stage_banner(text: String, y: float, alpha: float) -> void:

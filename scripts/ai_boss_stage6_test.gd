@@ -9,15 +9,15 @@ func _initialize() -> void:
 
 	scene.selected_control_mode = scene.ControlMode.AI
 	scene.reset()
-	scene.load_stage(4)
-	_assert(scene.stage == 4, "boss test starts at stage 5")
-	_assert(scene.control_mode == scene.ControlMode.AI, "stage 5 boss test uses ai control")
-	_assert(scene.boss_controller.is_alive(), "stage 5 boss is alive")
+	scene.load_stage(5)
+	_assert(scene.stage == 5, "boss test starts at stage 6")
+	_assert(scene.control_mode == scene.ControlMode.AI, "stage 6 boss test uses ai control")
+	_assert(scene.boss_controller.is_alive(), "stage 6 boss is alive")
 
 	_assert_beam_tell_escape(scene)
 	_assert_beam_projectile_escape(scene)
 	_assert_pressure_bomb(scene)
-	await _assert_stage5_survival(scene, 24.0)
+	await _assert_stage6_survival(scene, 24.0)
 
 	root.remove_child(scene)
 	scene.free()
@@ -62,9 +62,9 @@ func _assert_pressure_bomb(scene: Node) -> void:
 	_assert(command.bomb, "ai uses last bomb under heavy boss pressure")
 
 
-func _assert_stage5_survival(scene: Node, seconds: float) -> void:
+func _assert_stage6_survival(scene: Node, seconds: float) -> void:
 	scene.projectiles.clear()
-	scene.load_stage(4)
+	scene.load_stage(5)
 	scene.player.bombs = 3
 	scene.player.shield = 0
 	scene.player.invuln = 0.0
@@ -81,12 +81,12 @@ func _assert_stage5_survival(scene: Node, seconds: float) -> void:
 		await process_frame
 		if scene.state == scene.GameState.GAME_OVER or scene.state == scene.GameState.VICTORY:
 			break
-	_assert(scene.state != scene.GameState.GAME_OVER, "ai survives stage 5 boss opening")
+	_assert(scene.state != scene.GameState.GAME_OVER, "ai survives stage 6 boss opening")
 	_assert(damage_taken <= 1, "ai keeps boss opening damage controlled")
 
 
 func _assert(condition: bool, label: String) -> void:
 	if condition:
 		return
-	push_error("AI boss stage 5 test failed: " + label)
+	push_error("AI boss stage 6 test failed: " + label)
 	quit(1)

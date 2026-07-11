@@ -60,7 +60,7 @@ Codex への依頼は、たとえば「ワームの伸長ロジックだけ直�
 
 3. headless / debug で確認する
    - 見た目の前に、ロジックが壊れていないことを固定 seed やスクリプトで確認する。
-   - Nova Swarm では `smoke_test.gd`、`gameplay_test.gd`、`ai_simulation_test.gd`、`ai_boss_stage5_test.gd` を使う。
+   - Nova Swarm では `smoke_test.gd`、`gameplay_test.gd`、`ai_simulation_test.gd`、`ai_boss_stage6_test.gd` を使う。
 
 4. native 実行 / MCP で体感を見る
    - 操作感、速度、視認性、音、演出は headless test だけでは判断しない。

@@ -42,8 +42,8 @@ func _initialize() -> void:
 	_assert(scene.state == scene.GameState.PLAYING, "reset starts play")
 	_assert(scene.control_mode == scene.ControlMode.MANUAL, "manual selection starts manual play")
 	_assert(scene.stage == 0, "reset loads stage 1")
-	_assert(scene.swarm.enemies.size() == 25, "stage 1 enemy count includes commander")
-	_assert(scene.swarm.enemies.any(func(enemy: Dictionary) -> bool: return enemy.kind == "commander"), "stage 1 includes commander")
+	_assert(scene.swarm.enemies.size() == 21, "stage 1 starts with a compact first wave")
+	_assert(not scene.swarm.enemies.any(func(enemy: Dictionary) -> bool: return enemy.kind == "commander"), "commander is reserved for the final wave")
 	_assert(scene.hitstop == 0.0, "stage banner does not stop play")
 	_assert(scene.audio_manager.current_music_key == "stage_drive", "reset starts stage drive music")
 	var start_y: float = scene.player.y
@@ -121,7 +121,7 @@ func _initialize() -> void:
 	scene.swarm.enemies.append({"kind": "bug", "x": scene.player.x - 60.0, "y": scene.player.y - 360.0, "hp": 1, "max_hp": 1, "size": 34.0})
 	ai_command = scene.ai_pilot.get_command(scene.player, scene.swarm.enemies, {}, [], [{"kind": "bomb", "x": scene.player.x + 140.0, "y": scene.player.y - 170.0, "vy": 0.0, "t": 0.0}])
 	_assert(ai_command.move_axis > 0.0, "ai prioritizes item pickup before clearing final enemy")
-	scene.load_stage(4)
+	scene.load_stage(5)
 	scene.boss_controller.boss.x = scene.player.x + 120.0
 	ai_command = scene.ai_pilot.get_command(scene.player, [], scene.boss_controller.boss, [], [])
 	_assert(ai_command.shoot, "ai shoots at boss")
@@ -138,20 +138,18 @@ func _initialize() -> void:
 	_assert(scene.player.bombs == bombs_before - 1, "bomb is consumed")
 	_assert(scene.bomb_waves.size() == 1, "bomb wave is spawned")
 
-	scene.player.shot_cooldown_scale = 1.0
-	scene._apply_upgrade("rapid")
-	_assert(scene.player.shot_cooldown_scale < 1.0, "rapid upgrade improves shot cooldown")
-	scene.bomb_range_scale = 1.0
-	scene._apply_upgrade("bomb_refund")
-	_assert(scene.bomb_range_scale > 1.0, "bomb loop increases range")
-	_assert(scene.player.bomb_refund_chance > 0.0, "bomb loop enables refunds")
-	scene._apply_upgrade("spread")
-	_assert(scene.player.shot_pattern == "wide", "spread upgrade changes shot pattern")
-	scene._apply_upgrade("graze_core")
-	_assert(scene.player.graze_chain_bonus, "graze core enables graze chain")
-	scene._apply_upgrade("shield_burst")
-	_assert(scene.player.shield_retaliate, "shield burst enables counter")
-	scene.player.shot_pattern = "twin"
+	_assert(not scene.player.collect_chip("power"), "first power chip adds partial progress")
+	_assert(not scene.player.collect_chip("power"), "second power chip remains partial")
+	_assert(scene.player.collect_chip("power"), "third power chip levels the weapon")
+	_assert(scene.player.chip_levels.power == 1, "power level is tracked during combat")
+	_assert(scene.player.shot_cooldown_scale < 1.0, "power level improves shot cooldown")
+	for _i in range(3):
+		scene.player.collect_chip("spread")
+	_assert(scene.player.shot_pattern == "wide", "spread chips change the live shot pattern")
+	for _i in range(6):
+		scene.player.collect_chip("resonance")
+	_assert(scene.player.resonance_gain_scale > 1.0, "resonance chips improve gauge gain")
+	scene.player.reset_combat_growth()
 
 	scene.projectiles.clear()
 	scene.player.resonance = 0.0
@@ -204,6 +202,7 @@ func _initialize() -> void:
 
 	scene.load_stage(0)
 	_assert(scene.audio_manager.current_music_key == "stage_drive", "early stages use drive music")
+	scene._start_wave(int(Config.STAGES[0].waves) - 1)
 	var commander: Dictionary = scene.swarm.enemies.filter(func(enemy: Dictionary) -> bool: return enemy.kind == "commander")[0]
 	scene.player.resonance = 0.0
 	var items_before_commander: int = scene.items.size()
@@ -212,14 +211,12 @@ func _initialize() -> void:
 	_assert(scene.items.size() == items_before_commander + 1, "commander drops reward item")
 	scene.swarm.enemies.clear()
 	scene._check_stage_end()
-	_assert(scene.state == scene.GameState.UPGRADE, "clearing enemies enters upgrade state")
-	_assert(scene.stage_results.size() == 1, "stage result is recorded")
-	_assert(["SSS", "SS", "S", "A", "B", "C"].has(scene.stage_results[0].rank), "stage result has rank")
-	_assert(scene.upgrade_options.size() == 3, "upgrade state rolls three choices")
-	scene._apply_selected_upgrade()
-	_assert(scene.stage == 1, "upgrade confirmation advances stage")
-	_assert(scene.state == scene.GameState.PLAYING, "upgrade confirmation resumes play")
-	scene.load_stage(2)
+	_assert(scene.stage_transition_timer > 0.0, "final wave clear schedules a seamless stage transition")
+	_assert(scene.state == scene.GameState.PLAYING, "stage clear never opens an upgrade menu")
+	_assert(scene.stage_results.size() == 1, "stage result is recorded without interrupting play")
+	scene._update_stage_progression(2.0)
+	_assert(scene.stage == 1, "seamless transition advances to stage 2")
+	scene.load_stage(3)
 	_assert(scene.audio_manager.current_music_key == "stage_pressure", "later stages use pressure music")
 	_assert(scene.stage_hazards.any(func(hazard: Dictionary) -> bool: return hazard.kind == "rock"), "rock belt spawns rock hazards")
 	scene.stage_hazards.clear()
@@ -231,8 +228,14 @@ func _initialize() -> void:
 	scene._check_rock_collisions()
 	_assert(scene.score == 340, "destroyed rock is scored once per frame")
 	_assert(scene.stage_hazards.is_empty(), "destroyed rock is removed before later collisions")
-	scene.load_stage(3)
+	scene.load_stage(4)
 	_assert(scene.stage_hazards.any(func(hazard: Dictionary) -> bool: return str(hazard.kind).begins_with("plasma")), "plasma nest spawns reflectors")
+	scene.load_stage(2)
+	scene._start_wave(int(Config.STAGES[2].waves) - 1)
+	_assert(scene.swarm.enemies.filter(func(enemy: Dictionary) -> bool: return str(enemy.kind).begins_with("mid_")).size() == 2, "stage 3 final wave spawns twin midbosses")
+	scene.load_stage(4)
+	scene._start_wave(int(Config.STAGES[4].waves) - 1)
+	_assert(scene.swarm.enemies.filter(func(enemy: Dictionary) -> bool: return str(enemy.kind).begins_with("mid_")).size() == 3, "stage 5 final wave spawns a midboss trio")
 	scene.load_stage(1)
 	var diver: Dictionary = scene.swarm.enemies.filter(func(enemy: Dictionary) -> bool: return enemy.kind == "diver")[0]
 	diver.dive = 1.0
@@ -245,7 +248,7 @@ func _initialize() -> void:
 	scene.queue_redraw()
 	await process_frame
 
-	scene.load_stage(4)
+	scene.load_stage(5)
 	_assert(scene.boss_controller.is_alive(), "boss stage spawns boss")
 	_assert(scene.boss_controller.boss.has("parts"), "boss has breakable parts")
 	_assert(scene.audio_manager.current_music_key == "boss_core", "boss stage starts boss music")
@@ -269,7 +272,7 @@ func _initialize() -> void:
 	scene._check_stage_end()
 	_assert(scene.state == scene.GameState.VICTORY, "boss defeat wins")
 	_assert(scene.audio_manager.current_music_key == "victory_clear", "victory starts clear music")
-	_assert(scene.stage_results.any(func(result: Dictionary) -> bool: return int(result.stage) == 4), "boss result is recorded")
+	_assert(scene.stage_results.any(func(result: Dictionary) -> bool: return int(result.stage) == 5), "stage 6 boss result is recorded")
 
 	scene.reset()
 	scene.player.invuln = 0.0
@@ -295,6 +298,10 @@ func _initialize() -> void:
 	scene.items.append({"kind": "shield", "x": scene.player.x, "y": scene.player.y, "vy": 0.0, "t": 0.0})
 	scene._check_collisions()
 	_assert(scene.player.shield == 1, "shield item is collected")
+
+	scene.items.append({"kind": "power", "x": scene.player.x, "y": scene.player.y, "vy": 0.0, "t": 0.0})
+	scene._check_collisions()
+	_assert(scene.player.chip_progress.power == 1, "combat chip is collected without pausing")
 
 	root.remove_child(scene)
 	scene.free()

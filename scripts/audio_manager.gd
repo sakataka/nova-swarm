@@ -3,15 +3,25 @@ class_name NovaAudioManager
 
 const MUSIC_BANK_LABEL := "nova_swarm"
 const USE_RESONATE_MUSIC := false
-const MUSIC_VOLUME_DB := -30.0
-const MUSIC_DUCK_DB := -38.0
-const MUSIC_OVERDRIVE_DB := -27.0
+const MUSIC_VOLUME_DB := -25.0
+const MUSIC_DUCK_DB := -29.0
+const MUSIC_OVERDRIVE_DB := -22.0
 const MUSIC_FADE_TIME := 1.25
 const OVERDRIVE_STEM_NAME := "overdrive"
 const OVERDRIVE_STEM_FADE_TIME := 0.38
 const OVERDRIVE_FALLBACK_VOLUME_DB := -34.0
 const MUSIC_VOLUME_TWEEN_TIME := 0.25
 const SFX_MIN_INTERVAL_MS := 70
+const SFX_INTERVALS := {
+	"shot": 55,
+	"hit": 45,
+	"chip": 45,
+	"graze": 55,
+	"wave": 180,
+	"level_up": 240,
+	"midboss_break": 280,
+	"stage_clear": 350,
+}
 
 const MUSIC_PATHS := {
 	"title": "res://public/assets/audio/music/title_neon_loop.wav",
@@ -55,6 +65,7 @@ var _sfx_last_played_ms: Dictionary = {}
 
 func _ready() -> void:
 	_enabled = DisplayServer.get_name() != "headless"
+	_setup_buses()
 	_setup_master_limiter()
 	_setup_sfx()
 	_setup_music()
@@ -145,10 +156,13 @@ func play_sfx(sfx_name: String) -> void:
 	if muted or not _enabled or not sfx_streams.has(sfx_name):
 		return
 	var now := Time.get_ticks_msec()
-	if now - int(_sfx_last_played_ms.get(sfx_name, -SFX_MIN_INTERVAL_MS)) < SFX_MIN_INTERVAL_MS:
+	var min_interval := int(SFX_INTERVALS.get(sfx_name, SFX_MIN_INTERVAL_MS))
+	if now - int(_sfx_last_played_ms.get(sfx_name, -min_interval)) < min_interval:
 		return
 	_sfx_last_played_ms[sfx_name] = now
-	_play_stream(sfx_streams[sfx_name], -8.0 if sfx_name in ["bomb", "boss"] else -12.0)
+	var volume := -7.0 if sfx_name in ["bomb", "midboss_break", "stage_clear"] else -10.0 if sfx_name in ["boom", "hurt", "level_up"] else -13.0
+	var pitch_variance := 0.025 if sfx_name in ["stage_clear", "level_up"] else 0.065
+	_play_stream(sfx_streams[sfx_name], volume, pitch_variance)
 
 
 func has_overdrive_music_layer(music_key: String) -> bool:
@@ -160,18 +174,24 @@ func _setup_sfx() -> void:
 		return
 	for i in range(10):
 		var player := AudioStreamPlayer.new()
+		player.bus = "SFX"
 		add_child(player)
 		audio_players.append(player)
 	sfx_streams = {
-		"shot": _make_tone(720, 0.08, "square", 0.18, -0.58),
-		"hit": _make_noise(0.13, 0.2),
-		"boom": _make_noise(0.42, 0.38),
-		"bomb": _make_noise(0.72, 0.44),
+		"shot": _make_layered_impact(0.075, 910.0, 0.76, 0.2),
+		"hit": _make_layered_impact(0.105, 180.0, 0.9, 0.24),
+		"boom": _make_layered_impact(0.38, 76.0, 0.62, 0.42),
+		"bomb": _make_layered_impact(0.7, 46.0, 0.48, 0.5),
 		"hurt": _make_tone(220, 0.24, "square", 0.3, -0.36),
 		"boss": _make_tone(110, 0.72, "saw", 0.32, -0.15),
 		"clear": _make_tone(440, 0.32, "square", 0.22, 0.18),
 		"overdrive": _make_tone(880, 0.46, "triangle", 0.28, 0.55),
 		"graze": _make_tone(1180, 0.055, "square", 0.12, 0.18),
+		"chip": _make_pickup_tone(620.0, 0.13, 0.15),
+		"level_up": _make_pickup_tone(420.0, 0.42, 0.28),
+		"wave": _make_pickup_tone(300.0, 0.24, 0.2),
+		"midboss_break": _make_layered_impact(0.82, 42.0, 0.72, 0.54),
+		"stage_clear": _make_pickup_tone(330.0, 0.7, 0.3),
 	}
 
 
@@ -188,12 +208,14 @@ func _setup_music() -> void:
 
 	for i in range(2):
 		var player := AudioStreamPlayer.new()
+		player.bus = "Music"
 		player.volume_db = -80.0
 		player.finished.connect(_on_fallback_music_finished.bind(player))
 		add_child(player)
 		_music_players.append(player)
 
 	_overdrive_music_player = AudioStreamPlayer.new()
+	_overdrive_music_player.bus = "Music"
 	_overdrive_music_player.volume_db = -80.0
 	_overdrive_music_player.finished.connect(_on_overdrive_fallback_finished)
 	add_child(_overdrive_music_player)
@@ -217,6 +239,20 @@ func _setup_master_limiter() -> void:
 	var limiter := AudioEffectHardLimiter.new()
 	limiter.ceiling_db = -1.0
 	AudioServer.add_bus_effect(master_bus, limiter)
+
+
+func _setup_buses() -> void:
+	if not _enabled:
+		return
+	_ensure_bus("Music")
+	_ensure_bus("SFX")
+
+
+func _ensure_bus(bus_name: String) -> void:
+	if AudioServer.get_bus_index(bus_name) >= 0:
+		return
+	AudioServer.add_bus()
+	AudioServer.set_bus_name(AudioServer.bus_count - 1, bus_name)
 
 
 func _create_resonate_bank() -> void:
@@ -410,11 +446,12 @@ func _sync_overdrive_fallback(should_play: bool, fade_time: float) -> void:
 	_overdrive_fade_tween.tween_property(_overdrive_music_player, "volume_db", target_volume, maxf(0.01, fade_time))
 
 
-func _play_stream(stream: AudioStream, volume_db: float) -> void:
+func _play_stream(stream: AudioStream, volume_db: float, pitch_variance := 0.0) -> void:
 	for player in audio_players:
 		if not player.playing:
 			player.stream = stream
 			player.volume_db = volume_db
+			player.pitch_scale = 1.0 + randf_range(-pitch_variance, pitch_variance)
 			player.play()
 			return
 
@@ -461,6 +498,38 @@ func _make_noise(duration: float, volume: float) -> AudioStreamWAV:
 		var p := float(i) / frames
 		last = lerpf(last, randf_range(-1.0, 1.0), 0.38)
 		_write_sample(data, i, last * pow(1.0 - p, 2.2) * volume)
+	return _make_wav(data, mix_rate)
+
+
+func _make_layered_impact(duration: float, low_freq: float, brightness: float, volume: float) -> AudioStreamWAV:
+	var mix_rate := 44100
+	var frames := int(duration * mix_rate)
+	var data := PackedByteArray()
+	data.resize(frames * 2)
+	var filtered_noise := 0.0
+	for i in range(frames):
+		var t := float(i) / mix_rate
+		var p := float(i) / maxf(1.0, float(frames))
+		filtered_noise = lerpf(filtered_noise, randf_range(-1.0, 1.0), brightness)
+		var low := sin(TAU * low_freq * (1.0 - p * 0.34) * t) * pow(1.0 - p, 2.0)
+		var crack := filtered_noise * pow(1.0 - p, 3.4)
+		var click := sin(TAU * (1900.0 - p * 1100.0) * t) * pow(1.0 - p, 8.0)
+		_write_sample(data, i, (low * 0.52 + crack * 0.34 + click * 0.14) * volume)
+	return _make_wav(data, mix_rate)
+
+
+func _make_pickup_tone(root: float, duration: float, volume: float) -> AudioStreamWAV:
+	var mix_rate := 44100
+	var frames := int(duration * mix_rate)
+	var data := PackedByteArray()
+	data.resize(frames * 2)
+	for i in range(frames):
+		var t := float(i) / mix_rate
+		var p := float(i) / maxf(1.0, float(frames))
+		var step: float = floor(p * 4.0)
+		var freq: float = root * pow(2.0, step * 4.0 / 12.0)
+		var sample: float = sin(TAU * freq * t) * 0.7 + sin(TAU * freq * 2.0 * t) * 0.2
+		_write_sample(data, i, sample * pow(1.0 - p, 1.4) * volume)
 	return _make_wav(data, mix_rate)
 
 

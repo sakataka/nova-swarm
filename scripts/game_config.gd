@@ -14,17 +14,17 @@ const SPRITE_GRID := 4.0
 const SPRITE_CELL := SPRITE_SHEET_SIZE / SPRITE_GRID
 const SPRITE_PAD := 12.0
 
-const UI_BG := Color("#08070d")
-const UI_PANEL := Color("#120914")
-const UI_PANEL_DARK := Color("#050308")
-const UI_TEXT := Color("#f3f7ff")
-const UI_TEXT_DIM := Color(0.78, 0.88, 0.96, 0.66)
-const UI_CYAN := Color("#58f1ff")
-const UI_RED := Color("#ff354a")
-const UI_DEEP_RED := Color("#7c1021")
-const UI_MAGENTA := Color("#ff4bd8")
-const UI_AMBER := Color("#ffd45a")
-const UI_GREEN := Color("#8dff8a")
+const UI_BG := Color("#050816")
+const UI_PANEL := Color("#0b1530")
+const UI_PANEL_DARK := Color("#030611")
+const UI_TEXT := Color("#f7fbff")
+const UI_TEXT_DIM := Color(0.72, 0.82, 0.94, 0.72)
+const UI_CYAN := Color("#42d9ff")
+const UI_RED := Color("#ff4d6d")
+const UI_DEEP_RED := Color("#35112a")
+const UI_MAGENTA := Color("#a95cff")
+const UI_AMBER := Color("#ffb84d")
+const UI_GREEN := Color("#7cff6b")
 const UI_PANEL_ALPHA := 0.84
 const UI_LINE_ALPHA := 0.52
 const UI_TOUCH_SHOT_SIZE := 112.0
@@ -36,31 +36,31 @@ const UI_TOUCH_STICK_HIT := 222.0
 const UI_TOUCH_KNOB := 28.0
 
 const STAGES := [
-	{"name": "STAR DRIFT", "bg": 0, "rows": 3, "cols": 8, "kinds": ["bug", "bug", "diver"], "speed": 24.0, "fire": 0.62, "dive": 0.45, "boss": false, "stars": 0.86, "scroll": 0.82, "tint": Color("#91dfff")},
-	{"name": "VENOM NEBULA", "bg": 1, "rows": 4, "cols": 8, "kinds": ["bug", "zig", "diver"], "speed": 32.0, "fire": 0.86, "dive": 0.8, "boss": false, "stars": 1.0, "scroll": 1.0, "tint": Color("#c77cff")},
-	{"name": "ROCK BELT", "bg": 2, "rows": 4, "cols": 9, "kinds": ["armor", "bug", "zig"], "speed": 36.0, "fire": 1.05, "dive": 1.0, "boss": false, "stars": 1.08, "scroll": 1.12, "tint": Color("#ffe36e")},
-	{"name": "PLASMA NEST", "bg": 3, "rows": 5, "cols": 9, "kinds": ["saucer", "zig", "armor", "diver"], "speed": 42.0, "fire": 1.2, "dive": 1.35, "boss": false, "stars": 1.18, "scroll": 1.24, "tint": Color("#ff69d8")},
-	{"name": "CITADEL CORE", "bg": 4, "rows": 0, "cols": 0, "kinds": [], "speed": 0.0, "fire": 0.0, "dive": 0.0, "boss": true, "stars": 1.3, "scroll": 1.38, "tint": Color("#ff5f46")},
+	{"name": "AURORA GATE", "bg": 0, "rows": 3, "cols": 7, "waves": 9, "midbosses": 0, "kinds": ["bug", "bug", "diver"], "speed": 22.0, "fire": 0.54, "dive": 0.38, "boss": false, "stars": 0.86, "scroll": 0.82, "tint": Color("#79dfff")},
+	{"name": "VIOLET FRONT", "bg": 1, "rows": 3, "cols": 8, "waves": 10, "midbosses": 0, "kinds": ["bug", "zig", "diver"], "speed": 29.0, "fire": 0.72, "dive": 0.62, "boss": false, "stars": 0.95, "scroll": 0.96, "tint": Color("#aa8cff")},
+	{"name": "TWIN COMET", "bg": 1, "rows": 3, "cols": 7, "waves": 7, "midbosses": 2, "kinds": ["zig", "diver", "armor"], "speed": 33.0, "fire": 0.84, "dive": 0.78, "boss": false, "stars": 1.02, "scroll": 1.04, "tint": Color("#ff79cb")},
+	{"name": "SOLAR BREAK", "bg": 2, "rows": 4, "cols": 8, "waves": 8, "midbosses": 0, "kinds": ["armor", "saucer", "zig", "diver"], "speed": 36.0, "fire": 0.94, "dive": 0.92, "boss": false, "stars": 1.08, "scroll": 1.12, "tint": Color("#ffd07a")},
+	{"name": "TRINITY SIEGE", "bg": 3, "rows": 4, "cols": 8, "waves": 8, "midbosses": 3, "kinds": ["saucer", "zig", "armor", "diver"], "speed": 39.0, "fire": 1.06, "dive": 1.08, "boss": false, "stars": 1.16, "scroll": 1.22, "tint": Color("#ff6f9e")},
+	{"name": "NOVA SOVEREIGN", "bg": 4, "rows": 0, "cols": 0, "waves": 1, "midbosses": 0, "kinds": [], "speed": 0.0, "fire": 0.0, "dive": 0.0, "boss": true, "stars": 1.26, "scroll": 1.34, "tint": Color("#6ea5ff")},
 ]
 
 const ENEMY_STATS := {
 	"bug": {"hp": 1, "score": 120, "size": 34.0, "color": Color("#78ff69"), "role": "drone"},
-	"diver": {"hp": 1, "score": 240, "size": 44.0, "color": Color("#b76cff"), "role": "diver"},
-	"zig": {"hp": 1, "score": 180, "size": 36.0, "color": Color("#39eaff"), "role": "weaver"},
-	"armor": {"hp": 2, "score": 420, "size": 46.0, "color": Color("#8dff5d"), "role": "tank"},
-	"saucer": {"hp": 1, "score": 360, "size": 44.0, "color": Color("#ff57f0"), "role": "flanker"},
-	"commander": {"hp": 7, "score": 1600, "size": 64.0, "color": Color("#ff5ff0"), "role": "commander"},
+	"diver": {"hp": 2, "score": 240, "size": 44.0, "color": Color("#b76cff"), "role": "diver"},
+	"zig": {"hp": 2, "score": 180, "size": 36.0, "color": Color("#39eaff"), "role": "weaver"},
+	"armor": {"hp": 3, "score": 420, "size": 46.0, "color": Color("#8dff5d"), "role": "tank"},
+	"saucer": {"hp": 2, "score": 360, "size": 44.0, "color": Color("#ff57f0"), "role": "flanker"},
+	"commander": {"hp": 20, "score": 1600, "size": 64.0, "color": Color("#ff5ff0"), "role": "commander"},
+	"mid_lancer": {"hp": 500, "score": 5200, "size": 76.0, "color": Color("#ff5a7a"), "role": "midboss"},
+	"mid_orbit": {"hp": 560, "score": 5600, "size": 78.0, "color": Color("#a96cff"), "role": "midboss"},
+	"mid_anchor": {"hp": 650, "score": 6200, "size": 82.0, "color": Color("#ffb84d"), "role": "midboss"},
 }
 
-const UPGRADE_POOL := [
-	{"id": "rapid", "name": "RAPID ARRAY", "desc": "SHOT RATE UP"},
-	{"id": "spread", "name": "WIDE ARRAY", "desc": "SIDE SHOTS"},
-	{"id": "overdrive", "name": "CORE EXTENDER", "desc": "OVERDRIVE TIME UP"},
-	{"id": "graze_core", "name": "GRAZE CORE", "desc": "GRAZE BUILDS CHAIN"},
-	{"id": "bomb_refund", "name": "BOMB LOOP", "desc": "BOMB KILLS CAN REFUND"},
-	{"id": "shield_burst", "name": "SHIELD BURST", "desc": "SHIELD HIT COUNTERS"},
-	{"id": "drop", "name": "SALVAGE LINK", "desc": "ITEM DROP UP"},
-]
+const CHIP_TRACKS := {
+	"power": {"name": "POWER", "color": Color("#ff6b54"), "shape": "triangle"},
+	"spread": {"name": "SPREAD", "color": Color("#7cff6b"), "shape": "fan"},
+	"resonance": {"name": "RESONANCE", "color": Color("#ffd84a"), "shape": "hex"},
+}
 
 const BG_PANELS := [
 	Rect2(14, 12, 599, 431),
