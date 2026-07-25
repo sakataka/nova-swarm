@@ -319,6 +319,11 @@ func _initialize() -> void:
 	scene.state = scene.GameState.PLAYING
 	scene.audio_manager.set_music_ducked(false)
 	_assert(not scene.audio_manager._music_ducked, "unpause restores music volume")
+	scene.audio_manager.set_app_active(false)
+	_assert(not scene.audio_manager._app_active, "backgrounding deactivates audio")
+	_assert(scene.audio_manager.current_music_key == "stage_drive", "backgrounding preserves the current music key")
+	scene.audio_manager.set_app_active(true)
+	_assert(scene.audio_manager._app_active, "foregrounding reactivates audio")
 
 	scene.player.lives = 2
 	scene.items.append({"kind": "life", "x": scene.player.x, "y": scene.player.y, "vy": 0.0, "t": 0.0})

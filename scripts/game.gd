@@ -43,6 +43,11 @@ var touch_move_vector := Vector2.ZERO
 var touch_button_indices := {"shoot": -1, "bomb": -1, "overdrive": -1}
 var touch_button_pressed := {"shoot": false, "bomb": false}
 var touch_overdrive_queued := false
+var _web_document: Variant = null
+var _web_window: Variant = null
+var _web_visibility_callback: Variant = null
+var _web_pagehide_callback: Variant = null
+var _web_pageshow_callback: Variant = null
 
 var player = PlayerScript.new()
 var projectiles = ProjectileManagerScript.new()
@@ -134,6 +139,7 @@ func _ready() -> void:
 	score_crystal_texture = _load_imported_or_png_texture("res://public/assets/score_crystal_atlas.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
+	_setup_web_audio_lifecycle()
 	_setup_overdrive_particles()
 	audio_manager.play_music("title", 0.25)
 	_parse_web_query()
@@ -141,8 +147,60 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	_teardown_web_audio_lifecycle()
 	if audio_manager and audio_manager.has_method("shutdown"):
 		audio_manager.shutdown()
+
+
+func _notification(what: int) -> void:
+	if not audio_manager:
+		return
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		audio_manager.set_app_active(false)
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		audio_manager.set_app_active(true)
+
+
+func _setup_web_audio_lifecycle() -> void:
+	if OS.get_name() != "Web":
+		return
+	_web_document = JavaScriptBridge.get_interface("document")
+	_web_window = JavaScriptBridge.get_interface("window")
+	_web_visibility_callback = JavaScriptBridge.create_callback(_on_web_visibility_changed)
+	_web_pagehide_callback = JavaScriptBridge.create_callback(_on_web_pagehide)
+	_web_pageshow_callback = JavaScriptBridge.create_callback(_on_web_pageshow)
+	_web_document.addEventListener("visibilitychange", _web_visibility_callback)
+	_web_window.addEventListener("pagehide", _web_pagehide_callback)
+	_web_window.addEventListener("pageshow", _web_pageshow_callback)
+	_on_web_visibility_changed([])
+
+
+func _teardown_web_audio_lifecycle() -> void:
+	if _web_document != null and _web_visibility_callback != null:
+		_web_document.removeEventListener("visibilitychange", _web_visibility_callback)
+	if _web_window != null and _web_pagehide_callback != null:
+		_web_window.removeEventListener("pagehide", _web_pagehide_callback)
+	if _web_window != null and _web_pageshow_callback != null:
+		_web_window.removeEventListener("pageshow", _web_pageshow_callback)
+	_web_visibility_callback = null
+	_web_pagehide_callback = null
+	_web_pageshow_callback = null
+	_web_document = null
+	_web_window = null
+
+
+func _on_web_visibility_changed(_arguments: Array) -> void:
+	if _web_document != null:
+		audio_manager.set_app_active(not bool(_web_document.hidden))
+
+
+func _on_web_pagehide(_arguments: Array) -> void:
+	audio_manager.set_app_active(false)
+
+
+func _on_web_pageshow(_arguments: Array) -> void:
+	if _web_document == null or not bool(_web_document.hidden):
+		audio_manager.set_app_active(true)
 
 
 func _setup_runtime_models() -> void:

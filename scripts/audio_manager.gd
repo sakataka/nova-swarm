@@ -56,6 +56,7 @@ var _music_ducked := false
 var _music_overdriven := false
 var _shutting_down := false
 var _enabled := true
+var _app_active := true
 var _resonate_manager: Node
 var _resonate_ready := false
 var _pending_music_key := ""
@@ -103,7 +104,7 @@ func play_music(music_key: String, fade_time := MUSIC_FADE_TIME) -> void:
 
 	current_music_key = music_key
 	_pending_music_key = music_key
-	if muted or not _enabled:
+	if muted or not _enabled or not _app_active:
 		return
 
 	if USE_RESONATE_MUSIC and _try_play_resonate(fade_time):
@@ -128,6 +129,27 @@ func set_music_overdriven(overdriven: bool) -> void:
 	_sync_overdrive_layer(OVERDRIVE_STEM_FADE_TIME)
 
 
+func set_app_active(active: bool) -> void:
+	if _app_active == active:
+		return
+	_app_active = active
+	if not active:
+		for player in audio_players:
+			player.stop()
+		_stop_music_players()
+		_stop_overdrive_fallback()
+		if _resonate_manager and _resonate_manager.has_method("stop"):
+			_resonate_manager.call("stop", 0.0)
+		return
+
+	if muted or not _enabled or current_music_key == "":
+		return
+	_pending_music_key = current_music_key
+	if USE_RESONATE_MUSIC and _try_play_resonate(0.15):
+		return
+	_play_fallback_music(current_music_key, 0.15)
+
+
 func toggle_mute() -> void:
 	muted = not muted
 	if muted:
@@ -139,13 +161,13 @@ func toggle_mute() -> void:
 			_resonate_manager.call("stop", 0.15)
 		return
 
-	if current_music_key != "":
+	if _app_active and current_music_key != "":
 		_pending_music_key = current_music_key
 		play_music(current_music_key, 0.35)
 
 
 func update_music(dt: float) -> void:
-	if not _enabled:
+	if not _enabled or not _app_active:
 		return
 	if USE_RESONATE_MUSIC and _pending_music_key != "" and not muted:
 		_try_play_resonate(MUSIC_FADE_TIME)
@@ -153,7 +175,7 @@ func update_music(dt: float) -> void:
 
 
 func play_sfx(sfx_name: String) -> void:
-	if muted or not _enabled or not sfx_streams.has(sfx_name):
+	if muted or not _enabled or not _app_active or not sfx_streams.has(sfx_name):
 		return
 	var now := Time.get_ticks_msec()
 	var min_interval := int(SFX_INTERVALS.get(sfx_name, SFX_MIN_INTERVAL_MS))
@@ -281,12 +303,12 @@ func _create_resonate_bank() -> void:
 
 func _on_resonate_updated() -> void:
 	_resonate_ready = true
-	if _pending_music_key != "" and not muted:
+	if _pending_music_key != "" and not muted and _app_active:
 		_try_play_resonate(MUSIC_FADE_TIME)
 
 
 func _try_play_resonate(fade_time: float) -> bool:
-	if not _resonate_manager or _pending_music_key == "":
+	if not _app_active or not _resonate_manager or _pending_music_key == "":
 		return false
 	if not _resonate_manager.has_method("play"):
 		return false
@@ -304,7 +326,7 @@ func _try_play_resonate(fade_time: float) -> bool:
 
 
 func _play_fallback_music(music_key: String, fade_time: float) -> void:
-	if _music_players.is_empty():
+	if not _app_active or _music_players.is_empty():
 		return
 	if not music_streams.has(music_key):
 		return
@@ -370,12 +392,12 @@ func _prepare_loop(stream: AudioStream) -> void:
 
 
 func _on_fallback_music_finished(player: AudioStreamPlayer) -> void:
-	if player.stream and not muted:
+	if player.stream and not muted and _app_active:
 		player.play()
 
 
 func _on_overdrive_fallback_finished() -> void:
-	if _overdrive_music_player and _overdrive_music_player.stream and not muted and _music_overdriven:
+	if _overdrive_music_player and _overdrive_music_player.stream and not muted and _music_overdriven and _app_active:
 		_overdrive_music_player.play()
 
 
@@ -409,7 +431,7 @@ func _make_music_stem(stem_name: String, stream: AudioStream, enabled: bool, vol
 
 
 func _sync_overdrive_layer(fade_time: float) -> void:
-	var should_play := _music_overdriven and current_music_key in OVERDRIVE_LAYER_SETTINGS and not muted and _enabled
+	var should_play := _music_overdriven and current_music_key in OVERDRIVE_LAYER_SETTINGS and not muted and _enabled and _app_active
 	var current_track_has_layer := current_music_key in OVERDRIVE_LAYER_SETTINGS
 	if _resonate_ready and current_track_has_layer and _resonate_manager and _resonate_manager.has_method("enable_stem"):
 		if should_play:
