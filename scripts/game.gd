@@ -48,6 +48,7 @@ var _web_window: Variant = null
 var _web_visibility_callback: Variant = null
 var _web_pagehide_callback: Variant = null
 var _web_pageshow_callback: Variant = null
+var _web_title_music_replayed := false
 
 var player = PlayerScript.new()
 var projectiles = ProjectileManagerScript.new()
@@ -308,6 +309,7 @@ func _update_feedback(dt: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	_replay_web_title_music_after_input(event)
 	if _handle_title_pointer_input(event):
 		get_viewport().set_input_as_handled()
 	elif _handle_touch_controls_input(event):
@@ -329,6 +331,26 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("mute_audio"):
 		audio_manager.toggle_mute()
 		get_viewport().set_input_as_handled()
+
+
+func _replay_web_title_music_after_input(event: InputEvent) -> void:
+	if _web_title_music_replayed or OS.get_name() != "Web" or state != GameState.TITLE:
+		return
+	var is_initial_press := false
+	if event is InputEventMouseButton:
+		var mouse_event := event as InputEventMouseButton
+		is_initial_press = mouse_event.pressed and mouse_event.button_index == MOUSE_BUTTON_LEFT
+	elif event is InputEventScreenTouch:
+		is_initial_press = (event as InputEventScreenTouch).pressed
+	elif event is InputEventKey:
+		is_initial_press = (event as InputEventKey).pressed and not (event as InputEventKey).echo
+	elif event is InputEventJoypadButton:
+		is_initial_press = (event as InputEventJoypadButton).pressed
+	if not is_initial_press:
+		return
+
+	_web_title_music_replayed = true
+	audio_manager.replay_current_music(0.08)
 
 
 func _handle_title_pointer_input(event: InputEvent) -> bool:

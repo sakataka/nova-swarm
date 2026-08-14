@@ -9,6 +9,9 @@ func _initialize() -> void:
 	await process_frame
 
 	_assert(scene.audio_manager.current_music_key == "title", "title music starts on boot")
+	scene.audio_manager._pending_music_key = ""
+	scene.audio_manager.replay_current_music()
+	_assert(scene.audio_manager._pending_music_key == "title", "title music is queued again after browser interaction")
 	_assert(scene.state == scene.GameState.TITLE, "game starts on title")
 	_assert(scene.selected_control_mode == scene.ControlMode.MANUAL, "manual mode is selected by default")
 	_assert(scene.control_mode == scene.ControlMode.MANUAL, "manual mode is active by default")

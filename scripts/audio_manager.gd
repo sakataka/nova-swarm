@@ -114,6 +114,23 @@ func play_music(music_key: String, fade_time := MUSIC_FADE_TIME) -> void:
 	_play_fallback_music(music_key, fade_time)
 
 
+func replay_current_music(fade_time := 0.08) -> void:
+	if current_music_key == "":
+		return
+	_pending_music_key = current_music_key
+	if muted or not _enabled or not _app_active:
+		return
+
+	# Web browsers can suspend audio started before the first user gesture.
+	# Reissuing play from that gesture makes the title cue audible without
+	# changing the selected track or the normal crossfade path.
+	if USE_RESONATE_MUSIC and _try_play_resonate(fade_time):
+		return
+	if USE_RESONATE_MUSIC and _resonate_manager and _resonate_manager.has_method("play") and _resonate_manager.get("has_loaded") != true:
+		return
+	_play_fallback_music(current_music_key, fade_time)
+
+
 func set_music_ducked(ducked: bool) -> void:
 	if _music_ducked == ducked:
 		return
