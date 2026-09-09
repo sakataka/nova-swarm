@@ -63,12 +63,7 @@ var bomb_waves: Array[Dictionary] = []
 var items: Array[Dictionary] = []
 var stage_hazards: Array[Dictionary] = []
 var score_crystals: Array[Dictionary] = []
-var sprite_texture: Texture2D
 var background_texture: Texture2D
-var ui_texture: Texture2D
-var ui_chrome_texture: Texture2D
-var commander_texture: Texture2D
-var commander_fx_texture: Texture2D
 var rock_obstacle_texture: Texture2D
 var projectile_texture: Texture2D
 var final_boss_texture: Texture2D
@@ -77,36 +72,20 @@ var enemy_fleet_texture: Texture2D
 var player_ship_texture: Texture2D
 var title_background_texture: Texture2D
 var title_controls_texture: Texture2D
-var title_mode_selected_texture: Texture2D
-var title_mode_idle_texture: Texture2D
-var title_deploy_texture: Texture2D
 var status_icons_texture: Texture2D
 var shield_fx_texture: Texture2D
 var hud_chassis_texture: Texture2D
 var overdrive_mote_texture: Texture2D
 var score_crystal_texture: Texture2D
+var resonance_pod_texture: Texture2D
+var explosion_texture: Texture2D
+var beam_player_texture: Texture2D
+var beam_enemy_texture: Texture2D
+var ending_texture: Texture2D
 var font: Font
 var display_font: Font
 var overdrive_aura: CPUParticles2D
 var overdrive_burst: CPUParticles2D
-var sprites: Dictionary = Config.sprites()
-var ui_regions := {
-	"logo": Rect2(105, 44, 1045, 320),
-	"life": Rect2(165, 391, 248, 248),
-	"bomb": Rect2(504, 391, 248, 248),
-	"shield": Rect2(844, 391, 248, 248),
-	"banner": Rect2(109, 685, 1038, 148),
-	"ending": Rect2(97, 849, 1060, 334),
-}
-var ui_chrome_regions := {
-	"panel": Rect2(0, 0, 192, 72),
-	"core": Rect2(208, 0, 96, 96),
-	"warning": Rect2(320, 0, 64, 64),
-	"shot": Rect2(0, 112, 72, 72),
-	"bomb": Rect2(80, 112, 72, 72),
-	"overdrive": Rect2(160, 112, 72, 72),
-	"pause": Rect2(240, 112, 72, 72),
-}
 
 
 func _ready() -> void:
@@ -114,30 +93,27 @@ func _ready() -> void:
 	_setup_native_window()
 	_setup_runtime_models()
 	touch_controls_available = _detect_touch_controls_available()
-	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_setup_fonts()
-	sprite_texture = _load_sprite_texture()
-	background_texture = load("res://public/assets/renewal/background_atlas.png")
-	ui_texture = _load_imported_or_png_texture("res://public/assets/ui_atlas.png")
-	ui_chrome_texture = _load_imported_or_png_texture("res://public/assets/ui_chrome.png")
-	commander_texture = _load_imported_or_png_texture("res://public/assets/commander.png")
-	commander_fx_texture = _load_imported_or_png_texture("res://public/assets/commander_fx.png")
-	rock_obstacle_texture = _load_imported_or_png_texture("res://public/assets/rock_obstacle.png")
-	projectile_texture = _load_imported_or_png_texture("res://public/assets/projectile_atlas.png")
-	final_boss_texture = _load_imported_or_png_texture("res://public/assets/renewal/final_boss.png")
-	boss_weakpoint_texture = _load_imported_or_png_texture("res://public/assets/boss_weakpoints.png")
-	enemy_fleet_texture = _load_imported_or_png_texture("res://public/assets/renewal/enemy_fleet.png")
-	player_ship_texture = _load_imported_or_png_texture("res://public/assets/renewal/player_ship.png")
-	title_background_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/title_launch_bay.png")
-	title_controls_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/controls/sheet-transparent.png")
-	title_mode_selected_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/controls/mode_selected.png")
-	title_mode_idle_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/controls/mode_idle.png")
-	title_deploy_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/controls/deploy_button.png")
-	status_icons_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/icons/sheet-transparent.png")
-	shield_fx_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/shield/sheet-transparent.png")
-	hud_chassis_texture = _load_imported_or_png_texture("res://public/assets/pro_ui/hud/hud_chassis.png")
-	overdrive_mote_texture = _load_imported_or_png_texture("res://public/assets/overdrive_mote.png")
-	score_crystal_texture = _load_imported_or_png_texture("res://public/assets/score_crystal_atlas.png")
+	background_texture = load("res://public/assets/refresh/backgrounds.png")
+	rock_obstacle_texture = _load_imported_or_png_texture("res://public/assets/refresh/rock.png")
+	projectile_texture = _load_imported_or_png_texture("res://public/assets/refresh/projectiles.png")
+	final_boss_texture = _load_imported_or_png_texture("res://public/assets/refresh/boss.png")
+	boss_weakpoint_texture = _load_imported_or_png_texture("res://public/assets/refresh/props.png")
+	enemy_fleet_texture = _load_imported_or_png_texture("res://public/assets/refresh/fleet.png")
+	player_ship_texture = _load_imported_or_png_texture("res://public/assets/refresh/player.png")
+	title_background_texture = _load_imported_or_png_texture("res://public/assets/refresh/title.png")
+	title_controls_texture = _load_imported_or_png_texture("res://public/assets/refresh/panel.png")
+	status_icons_texture = _load_imported_or_png_texture("res://public/assets/refresh/icons.png")
+	shield_fx_texture = _load_imported_or_png_texture("res://public/assets/refresh/shield.png")
+	hud_chassis_texture = title_controls_texture
+	overdrive_mote_texture = _load_imported_or_png_texture("res://public/assets/refresh/mote.png")
+	score_crystal_texture = _load_imported_or_png_texture("res://public/assets/refresh/props.png")
+	resonance_pod_texture = _load_imported_or_png_texture("res://public/assets/refresh/pod.png")
+	explosion_texture = _load_imported_or_png_texture("res://public/assets/refresh/explosions.png")
+	beam_player_texture = _load_imported_or_png_texture("res://public/assets/refresh/beam_player.png")
+	beam_enemy_texture = _load_imported_or_png_texture("res://public/assets/refresh/beam_enemy.png")
+	ending_texture = _load_imported_or_png_texture("res://public/assets/refresh/ending.png")
 	audio_manager = AudioManagerScript.new()
 	add_child(audio_manager)
 	_setup_web_audio_lifecycle()
@@ -236,7 +212,7 @@ func _setup_fonts() -> void:
 func _setup_overdrive_particles() -> void:
 	overdrive_aura = CPUParticles2D.new()
 	overdrive_aura.name = "OverdriveAura"
-	overdrive_aura.amount = 24
+	overdrive_aura.amount = 8
 	overdrive_aura.lifetime = 0.72
 	overdrive_aura.local_coords = false
 	overdrive_aura.emitting = false
@@ -245,8 +221,8 @@ func _setup_overdrive_particles() -> void:
 	overdrive_aura.gravity = Vector2.ZERO
 	overdrive_aura.initial_velocity_min = 26.0
 	overdrive_aura.initial_velocity_max = 82.0
-	overdrive_aura.scale_amount_min = 0.22
-	overdrive_aura.scale_amount_max = 0.52
+	overdrive_aura.scale_amount_min = 0.05
+	overdrive_aura.scale_amount_max = 0.12
 	overdrive_aura.angular_velocity_min = -160.0
 	overdrive_aura.angular_velocity_max = 160.0
 	overdrive_aura.color = Color(1.0, 1.0, 1.0, 0.78)
@@ -255,7 +231,7 @@ func _setup_overdrive_particles() -> void:
 
 	overdrive_burst = CPUParticles2D.new()
 	overdrive_burst.name = "OverdriveBurst"
-	overdrive_burst.amount = 48
+	overdrive_burst.amount = 16
 	overdrive_burst.lifetime = 0.42
 	overdrive_burst.one_shot = true
 	overdrive_burst.explosiveness = 0.95
@@ -266,11 +242,11 @@ func _setup_overdrive_particles() -> void:
 	overdrive_burst.gravity = Vector2.ZERO
 	overdrive_burst.initial_velocity_min = 130.0
 	overdrive_burst.initial_velocity_max = 310.0
-	overdrive_burst.scale_amount_min = 0.28
-	overdrive_burst.scale_amount_max = 0.72
+	overdrive_burst.scale_amount_min = 0.08
+	overdrive_burst.scale_amount_max = 0.2
 	overdrive_burst.angular_velocity_min = -240.0
 	overdrive_burst.angular_velocity_max = 240.0
-	overdrive_burst.color = Color(1.0, 0.82, 1.0, 0.84)
+	overdrive_burst.color = Color(0.8, 0.95, 1.0, 0.7)
 	overdrive_burst.texture = overdrive_mote_texture
 	add_child(overdrive_burst)
 
@@ -1136,11 +1112,12 @@ func _draw_background() -> void:
 	if background_texture:
 		var cell_width := float(background_texture.get_width()) / 2.0
 		var cell_height := float(background_texture.get_height()) / 3.0
-		var crop_width := cell_height * Config.W / Config.PLAY_H
+		var crop_height := cell_width * Config.PLAY_H / Config.W
+		var crop_width := cell_width
 		var source_x := float(stage % 2) * cell_width + (cell_width - crop_width) * 0.5
-		var source_y := float(stage / 2) * cell_height
-		var panel := Rect2(source_x, source_y, crop_width, cell_height)
-		draw_texture_rect_region(background_texture, Rect2(0, Config.HUD, Config.W, Config.PLAY_H), panel, Color(st.tint, 0.82))
+		var source_y := float(stage / 2) * cell_height + (cell_height - crop_height) * 0.5
+		var panel := Rect2(source_x, source_y, crop_width, crop_height)
+		draw_texture_rect_region(background_texture, Rect2(0, Config.HUD, Config.W, Config.PLAY_H), panel, Color(1, 1, 1, 0.88))
 	else:
 		draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color("#081323"))
 	draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(0, 0, 0, 0.34))
@@ -1176,16 +1153,25 @@ func _draw_playfield() -> void:
 func _draw_player() -> void:
 	var tint := Color(1, 1, 1, 0.52) if player.invuln > 0.0 and int(stage_timer * 16.0) % 2 == 0 else Color.WHITE
 	if player.is_overdrive_active():
-		tint = Color(1.0, 0.93, 0.48, 1.0)
-		var pulse := 0.92 + sin(stage_timer * 12.0) * 0.06
-		_draw_status_icon(6, Rect2(player.x - 78.0 * pulse, player.y - 78.0 * pulse, 156.0 * pulse, 156.0 * pulse), Color(1.0, 0.9, 0.48, 0.46))
+		_draw_resonance_pods()
 	if player_ship_texture:
-		var size := 118.0 if not player.is_overdrive_active() else 126.0
+		var size := 92.0
 		draw_texture_rect(player_ship_texture, Rect2(player.x - size * 0.5, player.y - size * 0.5, size, size), false, tint)
-	else:
-		_draw_sprite("player", player.x, player.y, 150, 150, tint)
 	if player.shield > 0:
 		_draw_player_shield()
+	# The cockpit marks the unchanged collision center even during Overdrive.
+	draw_circle(Vector2(player.x, player.y), 3.0, Color.WHITE)
+	draw_arc(Vector2(player.x, player.y), 4.5, 0.0, TAU, 16, Config.UI_CYAN, 1.0)
+
+
+func _draw_resonance_pods() -> void:
+	if not resonance_pod_texture:
+		return
+	for side in [-1.0, 1.0]:
+		var position := Vector2(player.x + side * (56.0 + sin(stage_timer * 2.4) * 4.0), player.y - 14.0 + cos(stage_timer * 2.4) * 5.0)
+		var origin := Vector2(player.x + side * 23.0, player.y + 5.0)
+		draw_line(origin, position, Color(Config.UI_CYAN, 0.2), 1.0)
+		draw_texture_rect(resonance_pod_texture, Rect2(position - Vector2(15, 19), Vector2(30, 38)), false)
 
 
 func _draw_player_shield() -> void:
@@ -1194,28 +1180,20 @@ func _draw_player_shield() -> void:
 	var cell := float(shield_fx_texture.get_width()) / 2.0
 	var frame := int(stage_timer * 7.0) % 4
 	var region := Rect2(float(frame % 2) * cell, float(frame / 2) * cell, cell, cell)
-	var size := 166.0 + float(clampi(player.shield, 1, 2) - 1) * 16.0
-	var tint := Color(1, 1, 1, 0.92) if player.shield == 1 else Color(1.0, 0.92, 0.58, 1.0)
+	var size := 118.0 + float(clampi(player.shield, 1, 2) - 1) * 8.0
+	var tint := Color(1, 1, 1, 0.48 if player.shield == 1 else 0.7)
 	draw_texture_rect_region(shield_fx_texture, Rect2(player.x - size * 0.5, player.y - size * 0.5, size, size), region, tint)
 
 
 func _draw_enemy(enemy: Dictionary) -> void:
-	if enemy_fleet_texture and enemy.kind in ["bug", "diver", "zig", "armor", "saucer", "commander", "mid_lancer", "mid_orbit", "mid_anchor"]:
+	if enemy_fleet_texture:
 		_draw_renewal_enemy(enemy)
-		return
-	if enemy.kind == "commander":
-		_draw_commander(enemy)
-		return
-	var tint := Color.WHITE
-	if enemy.max_hp > 1:
-		tint = Color(1.0, 0.85 + 0.15 * float(enemy.hp) / float(enemy.max_hp), 0.72 + 0.28 * float(enemy.hp) / float(enemy.max_hp), 1.0)
-	_draw_sprite(enemy.kind, enemy.x, enemy.y, enemy.size * 2.35, enemy.size * 2.35, tint)
 
 
 func _draw_renewal_enemy(enemy: Dictionary) -> void:
 	var order := ["bug", "diver", "zig", "armor", "saucer", "commander", "mid_lancer", "mid_orbit", "mid_anchor"]
 	var index := order.find(str(enemy.kind))
-	var cell := 1254.0 / 3.0
+	var cell := float(enemy_fleet_texture.get_width()) / 3.0
 	var region := Rect2(float(index % 3) * cell, float(index / 3) * cell, cell, cell)
 	var is_midboss: bool = enemy.kind in ["mid_lancer", "mid_orbit", "mid_anchor"]
 	var draw_size := float(enemy.size) * (1.92 if is_midboss else 1.74)
@@ -1234,25 +1212,6 @@ func _draw_renewal_enemy(enemy: Dictionary) -> void:
 		var hp_ratio := clampf(float(enemy.hp) / maxf(1.0, float(enemy.max_hp)), 0.0, 1.0)
 		draw_rect(Rect2(enemy.x - bar_width * 0.5, enemy.y + draw_size * 0.48, bar_width, 5.0), Color(1, 1, 1, 0.13))
 		draw_rect(Rect2(enemy.x - bar_width * 0.5, enemy.y + draw_size * 0.48, bar_width * hp_ratio, 5.0), Config.ENEMY_STATS[enemy.kind].color)
-
-
-func _draw_commander(enemy: Dictionary) -> void:
-	var pulse := 0.5 + sin(stage_timer * 6.4 + enemy.id) * 0.5
-	var center := Vector2(enemy.x, enemy.y)
-	if commander_fx_texture:
-		var fx_size := 150.0 + pulse * 16.0
-		draw_texture_rect(commander_fx_texture, Rect2(center.x - fx_size / 2.0, center.y - fx_size / 2.0, fx_size, fx_size), false, Color(1.0, 1.0, 1.0, 0.45 + pulse * 0.22))
-	else:
-		draw_arc(center, 76.0 + pulse * 8.0, 0.0, TAU, 48, Color(1.0, 0.42, 0.92, 0.45), 4.0)
-	var hp_ratio := clampf(float(enemy.hp) / maxf(1.0, float(enemy.max_hp)), 0.0, 1.0)
-	var tint := Color(1.0, 0.82 + hp_ratio * 0.18, 0.9 + hp_ratio * 0.1, 1.0)
-	if commander_texture:
-		var size: float = float(enemy.size) * 2.45
-		draw_texture_rect(commander_texture, Rect2(center.x - size / 2.0, center.y - size / 2.0, size, size), false, tint)
-	else:
-		_draw_sprite("saucer", enemy.x, enemy.y, enemy.size * 2.4, enemy.size * 2.4, tint)
-	draw_rect(Rect2(center.x - 44.0, center.y + enemy.size + 12.0, 88.0, 5.0), Color(1, 1, 1, 0.16))
-	draw_rect(Rect2(center.x - 44.0, center.y + enemy.size + 12.0, 88.0 * hp_ratio, 5.0), Color("#ff5ff0"))
 
 
 func _draw_threat_previews() -> void:
@@ -1313,9 +1272,8 @@ func _enemy_dive_preview_end_x(enemy: Dictionary) -> float:
 func _draw_boss() -> void:
 	var tint := Color(1, 0.86, 0.86, 1) if boss_controller.boss.phase >= 2 else Color.WHITE
 	if final_boss_texture:
-		draw_texture_rect(final_boss_texture, Rect2(boss_controller.boss.x - 205.0, boss_controller.boss.y - 205.0, 410.0, 410.0), false, tint)
-	else:
-		_draw_sprite("boss", boss_controller.boss.x, boss_controller.boss.y, 390, 390, tint)
+		# Generated reactor centers align with the existing (-96,18), (96,18), (0,104) hit zones.
+		draw_texture_rect(final_boss_texture, Rect2(boss_controller.boss.x - 190.0, boss_controller.boss.y - 157.0, 380.0, 396.0), false, tint)
 	if boss_controller.boss.has("parts"):
 		for part in boss_controller.boss.parts:
 			var part_pos: Vector2 = Vector2(boss_controller.boss.x, boss_controller.boss.y) + part.offset
@@ -1324,25 +1282,18 @@ func _draw_boss() -> void:
 
 func _draw_boss_weakpoint(part: Dictionary, part_pos: Vector2) -> void:
 	var pulse := 0.5 + sin(stage_timer * 8.0 + part_pos.x * 0.03) * 0.5
-	var part_color: Color = Color("#42d9ff") if part.alive else Color(0.2, 0.26, 0.34, 0.62)
+	var part_color: Color = Config.UI_RED if part.alive else Color(0.2, 0.26, 0.34, 0.62)
 	var radius := 27.0 if part.id == "core" else 22.0
+	if boss_weakpoint_texture:
+		var cell := float(boss_weakpoint_texture.get_width()) / 2.0
+		var region := Rect2(0.0 if part.alive else cell, cell, cell, cell)
+		var size := 102.0 if part.id == "core" else 90.0
+		draw_texture_rect_region(boss_weakpoint_texture, Rect2(part_pos - Vector2.ONE * size * 0.5, Vector2.ONE * size), region, Color.WHITE if part.alive else Color(0.6, 0.6, 0.6, 1))
 	draw_circle(part_pos, radius + 6.0, Color(part_color, 0.08 + pulse * 0.05))
 	draw_arc(part_pos, radius, 0.0, TAU, 32, Color(part_color, 0.72), 3.0)
 	draw_arc(part_pos, radius + 7.0, -PI * 0.35, PI * 0.7, 18, Color(Config.UI_AMBER, 0.38 if part.alive else 0.1), 2.0)
 	if part.alive:
 		draw_circle(part_pos, 7.0 + pulse * 2.0, Color(0.82, 0.98, 1.0, 0.9))
-
-
-func _boss_weakpoint_region(part_id: String, alive: bool) -> Rect2:
-	var cell_w := 1254.0 / 6.0
-	var index := 0
-	if part_id == "left":
-		index = 0 if alive else 1
-	elif part_id == "right":
-		index = 2 if alive else 3
-	else:
-		index = 4 if alive else 5
-	return Rect2(cell_w * float(index), 0.0, cell_w, 1254.0)
 
 
 func _draw_stage_hazard(hazard: Dictionary) -> void:
@@ -1382,9 +1333,8 @@ func _draw_score_crystal(crystal: Dictionary) -> void:
 	draw_circle(center, 15.0 + pulse * 4.0, Color(0.35, 0.9, 1.0, 0.15))
 	if score_crystal_texture:
 		var cell := float(score_crystal_texture.get_width()) / 2.0
-		var frame := int(crystal.t * 11.0) % 4
-		var region := Rect2(float(frame % 2) * cell, float(frame / 2) * cell, cell, cell)
-		var size := 34.0 + pulse * 4.0
+		var region := Rect2(cell, 0, cell, cell)
+		var size := 24.0 + pulse * 3.0
 		draw_texture_rect_region(score_crystal_texture, Rect2(center.x - size * 0.5, center.y - size * 0.5, size, size), region, Color.WHITE)
 	else:
 		var points := PackedVector2Array([
@@ -1399,24 +1349,25 @@ func _draw_score_crystal(crystal: Dictionary) -> void:
 func _draw_bullet(bullet: Dictionary) -> void:
 	if projectile_texture:
 		var visual := str(bullet.get("sprite", "enemy" if bullet.enemy else "player"))
+		if visual == "beam" and beam_enemy_texture:
+			draw_texture_rect(beam_enemy_texture, Rect2(bullet.x - 15.0, bullet.y - 48.0, 30.0, 96.0), false)
+			return
 		var region := _projectile_region(visual)
-		var width := 34.0
-		var height := 74.0
+		var width := 10.0
+		var height := 40.0
 		if visual == "overdrive":
-			width = 48.0
-			height = 98.0
+			width = 18.0
+			height = 50.0
 		elif visual == "boss":
-			width = 48.0
-			height = 92.0
+			width = maxf(20.0, float(bullet.r) * 2.0 + 6.0)
+			height = 38.0
 		elif visual == "beam":
 			width = 58.0
 			height = 118.0
 		elif visual == "enemy":
-			width = 34.0
-			height = 68.0
+			width = maxf(16.0, float(bullet.r) * 2.0 + 6.0)
+			height = 26.0
 		var tint := Color.WHITE
-		if bullet.enemy and visual != "beam":
-			tint = Color(1.0, 0.78, 0.98, 0.96)
 		draw_texture_rect_region(projectile_texture, Rect2(bullet.x - width * 0.5, bullet.y - height * 0.5, width, height), region, tint)
 		return
 	var rx: float = bullet.r
@@ -1426,7 +1377,6 @@ func _draw_bullet(bullet: Dictionary) -> void:
 
 
 func _projectile_region(visual: String) -> Rect2:
-	var cell_w := 1254.0 / 4.0
 	var index := 0
 	if visual == "overdrive":
 		index = 1
@@ -1434,15 +1384,20 @@ func _projectile_region(visual: String) -> Rect2:
 		index = 2
 	elif visual == "boss" or visual == "beam":
 		index = 3
-	return Rect2(cell_w * float(index), 0.0, cell_w, 1254.0)
+	# Trim transparent padding and isolated glow specks; keep the luminous body readable.
+	var regions := [Rect2(50, 5, 28, 109), Rect2(174, 10, 37, 107), Rect2(39, 157, 44, 67), Rect2(173, 136, 40, 99)]
+	return regions[index]
 
 
 func _draw_explosion(explosion: Dictionary) -> void:
 	if explosion.t < 0.0:
 		return
-	var key := "boom1" if explosion.t < 0.17 else "boom2" if explosion.t < 0.34 else "boom3"
 	var size := 104.0 if explosion.big else 68.0
-	_draw_sprite(key, explosion.x, explosion.y, size, size, Color(1, 1, 1, 1.0 - explosion.t * 1.2))
+	if explosion_texture:
+		var cell := float(explosion_texture.get_width()) / 2.0
+		var frame := mini(3, int(explosion.t / 0.13))
+		var region := Rect2(float(frame % 2) * cell, float(frame / 2) * cell, cell, cell)
+		draw_texture_rect_region(explosion_texture, Rect2(explosion.x - size * 0.5, explosion.y - size * 0.5, size, size), region, Color(1, 1, 1, 1.0 - explosion.t * 1.2))
 
 
 func _draw_bomb_wave(wave: Dictionary) -> void:
@@ -1451,26 +1406,25 @@ func _draw_bomb_wave(wave: Dictionary) -> void:
 	var height: float = player.y - top
 	var beam_width: float = wave.width * (1.0 - progress * 0.38)
 	var alpha := 1.0 - progress
-	draw_rect(Rect2(wave.x - beam_width / 2.0, top, beam_width, height), Color(1.0, 0.36, 0.84, 0.22 * alpha))
-	draw_rect(Rect2(wave.x - beam_width * 0.22, top, beam_width * 0.44, height), Color(1.0, 0.97, 0.51, 0.28 * alpha))
-	draw_line(Vector2(wave.x, player.y), Vector2(wave.x + sin(wave.t * 48.0) * 18.0, top), Color(1, 1, 1, 0.8 * alpha), 4.0)
+	if beam_player_texture:
+		draw_texture_rect(beam_player_texture, Rect2(wave.x - beam_width * 0.5, top, beam_width, height), false, Color(1, 1, 1, 0.72 * alpha))
 
 
 func _draw_item(item: Dictionary) -> void:
 	var bob := sin(item.t * 8.0) * 3.0
 	var center := Vector2(item.x, item.y + bob)
-	var icon_index := 4
+	var icon_index := 3
 	var color := Config.UI_GREEN
 	if Config.CHIP_TRACKS.has(item.kind):
 		var track: Dictionary = Config.CHIP_TRACKS[item.kind]
 		color = track.color
 		icon_index = ["power", "spread", "resonance"].find(str(item.kind))
 	elif item.kind == "bomb":
-		color = Color("#ff7af0")
+		color = Config.UI_AMBER
 		icon_index = 5
 	elif item.kind == "shield":
 		color = Color("#72eaff")
-		icon_index = 3
+		icon_index = 4
 	var pulse := 1.0 + sin(item.t * 7.0) * 0.08
 	draw_circle(center, 30.0 * pulse, Color(color, 0.11))
 	_draw_status_icon(icon_index, Rect2(center.x - 27.0 * pulse, center.y - 27.0 * pulse, 54.0 * pulse, 54.0 * pulse), Color.WHITE)
@@ -1482,13 +1436,6 @@ func _draw_status_icon(index: int, rect: Rect2, tint := Color.WHITE) -> void:
 	var cell := float(status_icons_texture.get_width()) / 3.0
 	var region := Rect2(float(index % 3) * cell, float(index / 3) * cell, cell, cell)
 	draw_texture_rect_region(status_icons_texture, rect, region, tint)
-
-
-func _draw_sprite(key: String, cx: float, cy: float, dw: float, dh: float, tint := Color.WHITE) -> void:
-	if sprite_texture and sprites.has(key):
-		draw_texture_rect_region(sprite_texture, Rect2(cx - dw / 2.0, cy - dh / 2.0, dw, dh), sprites[key], tint)
-	else:
-		draw_rect(Rect2(cx - dw / 2.0, cy - dh / 2.0, dw, dh), Color("#7df7ff"))
 
 
 func _draw_infection_overlay() -> void:
@@ -1504,47 +1451,29 @@ func _draw_infection_overlay() -> void:
 
 
 func _draw_terminal_panel(rect: Rect2, accent: Color, fill_alpha := Config.UI_PANEL_ALPHA, selected := false) -> void:
-	draw_rect(rect, Color(0.015, 0.055, 0.12, fill_alpha))
-	draw_rect(rect, Color(accent, 0.62 if selected else 0.38), false, 2.0)
-	draw_rect(rect.grow(-7.0), Color(accent, 0.22), false, 1.0)
-	_draw_corner_marks(rect.grow(-3.0), accent, selected)
-
-
-func _draw_corner_marks(rect: Rect2, accent: Color, selected: bool) -> void:
-	var length := 18.0 if selected else 12.0
-	var alpha := 0.92 if selected else 0.5
-	var points := [
-		[rect.position, Vector2(1, 0), Vector2(0, 1)],
-		[Vector2(rect.end.x, rect.position.y), Vector2(-1, 0), Vector2(0, 1)],
-		[Vector2(rect.position.x, rect.end.y), Vector2(1, 0), Vector2(0, -1)],
-		[rect.end, Vector2(-1, 0), Vector2(0, -1)],
-	]
-	for point in points:
-		var origin: Vector2 = point[0]
-		var axis_a: Vector2 = point[1]
-		var axis_b: Vector2 = point[2]
-		draw_line(origin, origin + axis_a * length, Color(accent, alpha), 2.0)
-		draw_line(origin, origin + axis_b * length, Color(accent, alpha), 2.0)
+	if title_controls_texture:
+		draw_texture_rect(title_controls_texture, rect, false, Color(1, 1, 1, fill_alpha))
+	if selected:
+		draw_line(rect.position + Vector2(16, rect.size.y - 7), rect.end - Vector2(16, 7), accent, 3.0)
 
 
 func _draw_chrome_icon(key: String, rect: Rect2, tint := Color.WHITE) -> void:
-	if ui_chrome_texture and ui_chrome_regions.has(key):
-		draw_texture_rect_region(ui_chrome_texture, rect, ui_chrome_regions[key], tint)
+	var icons := {"shot": 0, "bomb": 5, "overdrive": 6, "core": 8, "warning": 8}
+	if icons.has(key):
+		_draw_status_icon(int(icons[key]), rect, tint)
+	elif key == "pause":
+		for offset in [0.28, 0.6]:
+			draw_rect(Rect2(rect.position + Vector2(rect.size.x * offset, rect.size.y * 0.15), rect.size * Vector2(0.13, 0.7)), tint)
 
 
 func _draw_core_glyph(center: Vector2, radius: float, accent: Color, active := false) -> void:
 	var pulse := 0.5 + sin(Time.get_ticks_msec() * 0.009) * 0.5
-	var size := radius * (1.72 + pulse * 0.12)
-	_draw_status_icon(6 if active else 2, Rect2(center.x - size * 0.5, center.y - size * 0.5, size, size), Color(1, 1, 1, 0.84))
-
-
-func _draw_terminal_button(rect: Rect2, label: String, sublabel: String, accent: Color, selected := false) -> void:
-	_draw_terminal_panel(rect, accent, 0.7, selected)
-	if selected:
-		draw_rect(rect.grow(-7.0), Color(accent, 0.14))
-	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.47, 22, Color("#fff6f4"))
-	if sublabel != "":
-		_draw_centered_in_width(sublabel, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.72, 11, Config.UI_TEXT_DIM)
+	var size := radius * 1.7
+	var rect := Rect2(center.x - size * 0.5, center.y - size * 0.5, size, size)
+	if active:
+		_draw_status_icon(3, rect, Color(1, 1, 1, 0.46 + pulse * 0.14))
+	else:
+		_draw_chrome_icon("pause", rect, Color(Config.UI_CYAN, 0.78))
 
 
 func _draw_overlay() -> void:
@@ -1564,17 +1493,17 @@ func _draw_overlay() -> void:
 	elif state == GameState.GAME_OVER:
 		title = "GAME OVER"
 	var sub := "P TO RESUME" if state == GameState.PAUSED else "ENTER TO DEPLOY"
-	if state == GameState.VICTORY and ui_texture:
+	if state == GameState.VICTORY and ending_texture:
 		_draw_terminal_panel(Rect2(118, Config.HUD + 48, 724, 214), Config.UI_CYAN, 0.58)
-		draw_texture_rect_region(ui_texture, Rect2(146, Config.HUD + 62, 668, 210), ui_regions.ending, Color(1, 1, 1, 0.88))
-		_draw_arcade_title(title, Config.HUD + 292.0, 44, Config.UI_TEXT)
-		hud.draw_centered(self, font, "FINAL SCORE " + str(score).pad_zeros(7), Config.HUD + 344, 22, Config.UI_AMBER)
-		_draw_results_table(Config.HUD + 384.0)
-		hud.draw_centered(self, font, _control_mode_label(control_mode) + " / ENTER TO REDEPLOY", Config.HUD + 640, 18, Config.UI_MAGENTA)
+		draw_texture_rect(ending_texture, Rect2(146, Config.HUD + 56, 668, 198), false)
+		_draw_arcade_title(title, Config.HUD + 300.0, 44, Config.UI_TEXT)
+		hud.draw_centered(self, font, "FINAL SCORE " + str(score).pad_zeros(7), Config.HUD + 326, 22, Config.UI_AMBER)
+		_draw_results_table(Config.HUD + 372.0)
+		hud.draw_centered(self, font, _control_mode_label(control_mode) + " / ENTER TO REDEPLOY", Config.HUD + 620, 18, Config.UI_CYAN)
 	else:
-		_draw_core_glyph(Vector2(Config.W * 0.5, Config.HUD + 168.0), 74.0, Config.UI_RED, state == GameState.GAME_OVER)
+		_draw_core_glyph(Vector2(Config.W * 0.5, Config.HUD + 116.0), 38.0, Config.UI_CYAN, state == GameState.GAME_OVER)
 		_draw_arcade_title(title, Config.HUD + 216.0, 58, Config.UI_TEXT)
-		hud.draw_centered(self, font, sub, Config.HUD + 292, 22, Config.UI_MAGENTA)
+		hud.draw_centered(self, font, sub, Config.HUD + 292, 22, Config.UI_CYAN)
 		if state == GameState.PAUSED:
 			_draw_controls_panel(Config.HUD + 332.0)
 		elif state == GameState.GAME_OVER and not stage_results.is_empty():
@@ -1645,7 +1574,7 @@ func _draw_results_table(y: float) -> void:
 		draw_string(font, Vector2(cols[1], row_y), str(result.score).pad_zeros(5), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_CYAN)
 		draw_string(font, Vector2(cols[2], row_y), str(result.chain), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
 		draw_string(font, Vector2(cols[3], row_y), str(result.damage), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ff9aa8"))
-		draw_string(font, Vector2(cols[4], row_y), str(result.bombs), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_MAGENTA)
+		draw_string(font, Vector2(cols[4], row_y), str(result.bombs), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
 		draw_string(font, Vector2(cols[5], row_y), str(result.rank), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, rank_color)
 	if not stage_results.is_empty():
 		var last_result: Dictionary = stage_results[stage_results.size() - 1]
@@ -1684,16 +1613,16 @@ func _draw_touch_controls() -> void:
 	var stick_offset := touch_move_vector * 38.0
 	var active_color := Config.UI_AMBER if touch_move_index != -1 else Color(Config.UI_TEXT, 0.38)
 	draw_circle(move_center, move_radius, Color(Config.UI_PANEL_DARK, 0.34))
-	draw_arc(move_center, move_radius, 0.0, TAU, 56, Color(Config.UI_RED, 0.36), 3.0)
+	draw_arc(move_center, move_radius, 0.0, TAU, 56, Color(Config.UI_CYAN, 0.36), 3.0)
 	draw_arc(move_center, move_radius - 15.0, -PI * 0.15, PI * 1.15, 44, Color(Config.UI_CYAN, 0.24), 2.0)
-	draw_line(move_center + Vector2(-move_radius + 16.0, 0), move_center + Vector2(move_radius - 16.0, 0), Color(Config.UI_RED, 0.12), 1.0)
-	draw_line(move_center + Vector2(0, -move_radius + 16.0), move_center + Vector2(0, move_radius - 16.0), Color(Config.UI_RED, 0.12), 1.0)
+	draw_line(move_center + Vector2(-move_radius + 16.0, 0), move_center + Vector2(move_radius - 16.0, 0), Color(Config.UI_CYAN, 0.12), 1.0)
+	draw_line(move_center + Vector2(0, -move_radius + 16.0), move_center + Vector2(0, move_radius - 16.0), Color(Config.UI_CYAN, 0.12), 1.0)
 	draw_circle(move_center + stick_offset, Config.UI_TOUCH_KNOB, Color(active_color, 0.34))
 	draw_arc(move_center + stick_offset, Config.UI_TOUCH_KNOB, 0.0, TAU, 32, active_color, 2.0)
 
 	var button_hitboxes := _touch_button_hitboxes()
 	_draw_touch_button(Rect2(button_hitboxes.shoot), "SHOT", "shot", Config.UI_CYAN, bool(touch_button_pressed.shoot))
-	_draw_touch_button(Rect2(button_hitboxes.bomb), "BOMB", "bomb", Config.UI_MAGENTA, bool(touch_button_pressed.bomb))
+	_draw_touch_button(Rect2(button_hitboxes.bomb), "BOMB", "bomb", Config.UI_AMBER, bool(touch_button_pressed.bomb))
 	_draw_touch_button(Rect2(button_hitboxes.overdrive), "OVER", "overdrive", Config.UI_AMBER, touch_overdrive_queued)
 	_draw_touch_button(_touch_pause_hitbox(), "PAUSE", "pause", Color(Config.UI_TEXT, 0.78), state == GameState.PAUSED)
 
@@ -1753,8 +1682,7 @@ func _draw_title_mode_select(y: float) -> void:
 
 func _draw_title_start_button() -> void:
 	var rect := _title_start_hitbox()
-	if title_deploy_texture:
-		draw_texture_rect(title_deploy_texture, rect, false, Color(1, 1, 1, 0.98))
+	_draw_terminal_panel(rect, Config.UI_CYAN, 1.0, true)
 	_draw_centered_in_width("DEPLOY", rect.position.x, rect.size.x, rect.position.y + 51.0, 25, Color.WHITE)
 
 
@@ -1763,9 +1691,7 @@ func _title_start_hitbox() -> Rect2:
 
 
 func _draw_title_control(rect: Rect2, selected: bool, label: String) -> void:
-	var texture := title_mode_selected_texture if selected else title_mode_idle_texture
-	if texture:
-		draw_texture_rect(texture, rect, false, Color.WHITE)
+	_draw_terminal_panel(rect, Config.UI_CYAN, 1.0 if selected else 0.62, selected)
 	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + 39.0, 16, Color.WHITE if selected else Color(Config.UI_TEXT, 0.62))
 
 
@@ -1799,8 +1725,7 @@ func _draw_stage_banner(text: String, y: float, alpha: float) -> void:
 	var x := (Config.W - text_size.x) / 2.0
 	var panel := Rect2((Config.W - 520.0) * 0.5, y - 48.0, 520.0, 72.0)
 	if title_controls_texture:
-		var cell := float(title_controls_texture.get_width()) / 2.0
-		draw_texture_rect_region(title_controls_texture, panel, Rect2(0, cell, cell, cell), Color(1, 1, 1, alpha * 0.84))
+		draw_texture_rect(title_controls_texture, panel, false, Color(1, 1, 1, alpha * 0.84))
 	draw_string(banner_font, Vector2(x + 2.0, y + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.62 * alpha))
 	draw_string(banner_font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_TEXT, alpha))
 
@@ -1857,26 +1782,6 @@ func _damage_boss_part(point: Vector2, power: int) -> int:
 			return 8
 		return 2
 	return 0
-
-
-func _load_sprite_texture() -> Texture2D:
-	var bytes := FileAccess.get_file_as_bytes("res://public/assets/spritesheet.png")
-	if bytes.is_empty():
-		push_warning("Failed to read spritesheet.png")
-		return null
-	var image := Image.new()
-	var err := image.load_png_from_buffer(bytes)
-	if err != OK:
-		push_warning("Failed to decode spritesheet.png")
-		return null
-	image.convert(Image.FORMAT_RGBA8)
-	for y in range(image.get_height()):
-		for x in range(image.get_width()):
-			var color := image.get_pixel(x, y)
-			if color.r < 0.12 and color.g < 0.12 and color.b < 0.13:
-				color.a = 0.0
-				image.set_pixel(x, y, color)
-	return ImageTexture.create_from_image(image)
 
 
 func _load_png_texture(path: String) -> Texture2D:

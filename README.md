@@ -42,26 +42,8 @@ scripts/audio_manager.gd
 scripts/smoke_test.gd
 scripts/gameplay_test.gd
 scripts/ai_boss_stage6_test.gd
-public/assets/spritesheet.png
-public/assets/backgrounds.png
-public/assets/ui_atlas.png
-public/assets/ui_chrome.png
-public/assets/rock_obstacle.png
-public/assets/projectile_atlas.png
-public/assets/overdrive_mote.png
-public/assets/score_crystal_atlas.png
-public/assets/final_boss.png
-public/assets/boss_weakpoints.png
+public/assets/refresh/
 public/assets/fonts/Oxanium-wght.ttf
-public/assets/renewal/player_ship.png
-public/assets/renewal/enemy_fleet.png
-public/assets/renewal/final_boss.png
-public/assets/renewal/background_atlas.png
-public/assets/pro_ui/title_launch_bay.png
-public/assets/pro_ui/controls/
-public/assets/pro_ui/icons/
-public/assets/pro_ui/shield/
-public/assets/pro_ui/hud/
 export_presets.cfg
 ```
 
@@ -84,29 +66,27 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 - 面と面の間に選択画面は挟みません。敵が落とす色付きチップを戦闘中に集め、`POW`（火力・連射）、`SPR`（拡散）、`RES`（Resonance・Overdrive）を各4段階まで成長させます。3個でレベルアップし、被弾時に失うのは未完成の進捗だけです。
 - 通常面は `5 / 6 / 4 / 5 / 4` ウェーブへ圧縮し、約0.55秒で次の編隊へ接続します。面クリアも短いバナーだけで次へ進みます。面クリア時はシールド全回復、中ボス撃破時もシールド回復のチェックポイントになり、低残機時には面クリアで1機修復されます。
 - 4面では破壊可能な岩障害物、5面では敵弾を跳ね返すプラズマ壁が出ます。
-- Resonance Overdrive中は近くの敵弾をスコア結晶に変換し、攻めながら危険を得点へ変えられます。自機を囲む白・コバルト・金のエネルギー片はOverdrive発動中を示す視覚効果で、独立した攻撃判定は持ちません。変換された発光結晶は自機へ吸引され、回収時に得点へ加算されます。近距離撃破もOverdrive維持に寄与します。
+- Resonance Overdrive中は近くの敵弾をスコア結晶に変換し、攻めながら危険を得点へ変えられます。Overdrive中は白・コバルトの共鳴制御ポッドが左右へ展開します。ポッドは敵弾を結晶化する共鳴場の制御装置という位置づけで、独立した射撃・攻撃判定は持ちません。変換された発光結晶は自機へ吸引され、回収時に得点へ加算されます。近距離撃破もOverdrive維持に寄与します。
 - ボスは複数の破壊可能部位を持ち、部位を壊すと攻撃テンポやビーム行動に影響します。
 - リザルトにはランクに加えて次回改善ヒントを表示します。スコア、チェイン、被弾、ボム使用、クリア時間を見て改善先を出します。
 - AI Pilotはタイトル画面の `AI DEMO` から開始できます。プレイ中の操作モード切り替えはなく、通常プレイのテンポを妨げません。
 
 ## アセット
 
-- `public/assets/spritesheet.png`: 自機、敵、弾、爆発、ボスなどの4x4固定グリッドスプライト
-- `public/assets/backgrounds.png`: 旧ビジュアル互換用の宇宙背景アトラス
-- `public/assets/ui_atlas.png`: タイトルロゴ、アイテムアイコン、ステージバナー、エンディング絵のUIアトラス
-- `public/assets/ui_chrome.png`: 赤い中枢侵食テーマのパネル表面、警告コア、タッチボタン用ピクセルUIアトラス
-- `public/assets/rock_obstacle.png`: `ROCK BELT` の岩障害物用スプライト。赤い鉱脈背景に馴染む生成画像を透明化して使用
-- `public/assets/projectile_atlas.png`: 自弾、Overdrive弾、敵弾、ボス弾用の生成スプライトアトラス
-- `public/assets/overdrive_mote.png`: Overdrive Aura / Burst用の生成エネルギー片。未テクスチャの四角粒子を置き換えます
-- `public/assets/score_crystal_atlas.png`: 敵弾変換後のスコア結晶用4フレームアトラス
-- `public/assets/final_boss.png`: 旧ビジュアル互換用のボススプライト
-- `public/assets/boss_weakpoints.png`: ボス部位の生存/破壊済み表示用スプライトアトラス
-- `public/assets/renewal/player_ship.png`: 白・コバルト・シアンを基調にした新しい自機スプライト
-- `public/assets/renewal/enemy_fleet.png`: 通常敵6種と中ボス3種を収録した3x3スプライトアトラス
-- `public/assets/renewal/final_boss.png`: 白・コバルト・金の最終ボス `NOVA SOVEREIGN`
-- `public/assets/renewal/background_atlas.png`: 戦闘の視認性を優先した6面分の3x2宇宙背景アトラス
-- `public/assets/pro_ui/`: 発進ベイのタイトル背景、実画像の操作パネル、9種のステータス／アイテム、4フレームの機械式シールド、操縦席風HUD
-- `public/assets/fonts/Oxanium-wght.ttf`: タイトル、HUD、ステージ表示、ポーズ、リザルトに使うOxanium可変フォント。`public/assets/fonts/OFL.txt` のSIL Open Font License 1.1で同梱しています
+2026-09-09に、内蔵画像生成機能でゲーム内の画像を全面刷新しました。素材は `public/assets/refresh/` にまとめています。使用ツールからモデル番号は取得できないため、特定の画像モデルの版は記録していません。
+
+- `player.png` / `pod.png`: 白・コバルト・シアンの自機と共鳴制御ポッド。自機の表示サイズは強化中も一定で、中央の小さなマーカーが衝突判定の中心を示します。
+- `fleet.png`: 通常敵6種と中ボス3種。黒い装甲・銅の縁・赤橙の炉心を共通にし、虫型、針型、ジグザグ翼、重装甲、円盤、指揮艦、三連砲、環状艦、要塞艦の輪郭で役割を区別します。
+- `boss.png` / `props.png`: 最終ボスと破壊可能な炉心の生存・破壊後表示。炉心の位置は既存の部位判定に合わせています。
+- `backgrounds.png`: 母星のゲートから敵の中枢まで進む6面の背景。2列×3行で、各面の中央は暗く保ちます。
+- `title.png` / `ending.png`: 同じ自機と2基のポッドが出撃し、母星へ帰還する一続きのシーン。
+- `projectiles.png` / `beam_player.png` / `beam_enemy.png` / `explosions.png`: シアンの自弾、白金の強化弾、赤橙の敵弾・ビーム、4段階の炉心爆発。
+- `icons.png` / `panel.png` / `shield.png`: 操縦席と同じ素材のHUD・操作パネル・成長チップ・シールド。シールドの中央は空け、機体を隠しません。
+- `rock.png` / `props.png` / `mote.png`: 銅鉱脈の岩、回収する共鳴結晶、小さな粒子。
+- `public/assets/fonts/Oxanium-wght.ttf`: タイトル、HUD、スコア・残機などの数字、ポーズ、結果画面で共通使用。画像へ文字を焼き込まず、同梱のSIL Open Font License 1.1で利用します。
+
+世界観・各素材の制作指示と配置は [ビジュアル制作仕様](docs/visual-refresh.md) に記録しています。旧画像は履歴参照用として残していますが、ゲームの描画では読み込みません。
+
 - `public/assets/audio/music/*.wav`: タイトル、通常戦、後半戦、ボス、勝利、ゲームオーバー用のオリジナルBGM。タイトル（116 BPM）、序盤通常戦（132 BPM）、ボス戦（140 BPM）はLogical BGMで再制作した48 kHzステレオ音源で、役割ごとにモチーフ、グルーヴ、音色、展開、ダイナミクスを分けています。
 - `scripts/tools/generate_music.py`: 後半戦、勝利、ゲームオーバーを含む従来ループを決定的に再生成する標準ライブラリのみの音源生成スクリプト
 
@@ -124,7 +104,7 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 - Web版のタイトル曲は画面表示時に再生を要求し、ブラウザの自動再生制限で保留された場合も、最初のクリック、タッチ、キー、ゲームパッド入力時に再要求します。
 - ステージ専用ギミック、戦闘中チップ成長、複数中ボス、ボス部位破壊、リザルト改善ヒントを追加しています。
 - HUDは画面揺れから分離し、スコア、ステージ／ウェーブ、ライフ、ボム、シールド、3系統の成長、Overdrive、ボスHPを上端に固定しています。
-- HUDは小さな補助ラベルを削り、アイコン・数値・レベル・進捗を画像フレーム内へ収めています。動的テキストはOxaniumへ統一し、割当幅に応じて縮小または省略します。
+- HUDは小さな補助ラベルを削り、アイコン・数値・レベル・進捗を画像フレーム内へ収めています。スコア・残機を含むすべての動的テキストはOxaniumへ統一し、割当幅に応じて縮小または省略します。
 - UI/UXは発進ベイを基準に、白い装甲、コバルトのガラス、シアンの発光、控えめな金へ統一しています。タイトル、HUD、チップ、シールド、ステージバナー、ポーズ／結果パネルまで同じ実画像のメカ素材を使用します。
 - タッチUIはiPhone Air相当の縦長表示でも押しやすいよう、仮想スティック、`SHOT`、`BOMB`、`OVER`、`PAUSE`の表示とヒットボックスを大きめに調整しています。
 - 自機、敵艦隊、中ボス、6面ボス、6面分の背景を新しい生成スプライトへ差し替えています。

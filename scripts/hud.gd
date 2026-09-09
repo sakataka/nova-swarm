@@ -7,10 +7,10 @@ const Config := preload("res://scripts/game_config.gd")
 func draw_hud(canvas: CanvasItem, font: Font, display_font: Font, score: int, stage: int, wave: int, wave_count: int, lives: int, bombs: int, shield: int, combo: int, boss: Dictionary, resonance: float, overdrive_timer: float, overdrive_duration: float, chip_levels: Dictionary, chip_progress: Dictionary, muted: bool, chassis: Texture2D, icons: Texture2D) -> void:
 	canvas.draw_rect(Rect2(0, 0, Config.W, Config.HUD + 12.0), Color("#020711"))
 	if chassis:
-		canvas.draw_texture_rect(chassis, Rect2(0, -5, Config.W, 102), false, Color(1, 1, 1, 0.98))
+		canvas.draw_texture_rect(chassis, Rect2(4, 2, Config.W - 8, 74), false, Color(1, 1, 1, 0.98))
 	_draw_score(canvas, font, display_font, score)
 	_draw_stage_progress(canvas, display_font, stage, wave, wave_count)
-	_draw_resources(canvas, lives, bombs, shield, icons)
+	_draw_resources(canvas, display_font, lives, bombs, shield, icons)
 	_draw_growth_tracks(canvas, chip_levels, chip_progress, icons)
 	_draw_resonance_bar(canvas, font, resonance, overdrive_timer, overdrive_duration, combo, muted, icons)
 	if not boss.is_empty():
@@ -34,7 +34,7 @@ func draw_fitted_text(canvas: CanvasItem, font: Font, text: String, rect: Rect2,
 
 func _draw_score(canvas: CanvasItem, font: Font, display_font: Font, score: int) -> void:
 	canvas.draw_string(display_font, Vector2(34, 25), "SCORE", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Config.UI_TEXT_DIM)
-	_draw_digits(canvas, str(score).pad_zeros(7), 92.0, 12.0, 5, Config.UI_TEXT)
+	draw_fitted_text(canvas, display_font, str(score).pad_zeros(7), Rect2(90, 7, 190, 34), 30, 24, Config.UI_TEXT)
 
 
 func _draw_stage_progress(canvas: CanvasItem, font: Font, stage: int, wave: int, wave_count: int) -> void:
@@ -46,17 +46,17 @@ func _draw_stage_progress(canvas: CanvasItem, font: Font, stage: int, wave: int,
 	canvas.draw_rect(Rect2(312, 43, 374.0 * progress, 2), Color(1, 1, 1, 0.46))
 
 
-func _draw_resources(canvas: CanvasItem, lives: int, bombs: int, shield: int, icons: Texture2D) -> void:
+func _draw_resources(canvas: CanvasItem, font: Font, lives: int, bombs: int, shield: int, icons: Texture2D) -> void:
 	var metrics := [
-		{"value": lives, "icon": 4, "color": Config.UI_GREEN},
-		{"value": bombs, "icon": 5, "color": Color("#ff68e8")},
-		{"value": shield, "icon": 3, "color": Config.UI_CYAN},
+		{"value": lives, "icon": 3, "color": Config.UI_TEXT},
+		{"value": bombs, "icon": 5, "color": Config.UI_AMBER},
+		{"value": shield, "icon": 4, "color": Config.UI_CYAN},
 	]
 	for i in range(metrics.size()):
 		var metric: Dictionary = metrics[i]
 		var x := 728.0 + float(i) * 76.0
 		_draw_atlas_icon(canvas, icons, int(metric.icon), Rect2(x + 7.0, 20.0, 26.0, 26.0), Color.WHITE)
-		_draw_digits(canvas, str(metric.value), x + 40.0, 25.0, 4, metric.color)
+		canvas.draw_string(font, Vector2(x + 40.0, 44.0), str(metric.value), HORIZONTAL_ALIGNMENT_LEFT, 28, 24, metric.color)
 
 
 func _draw_growth_tracks(canvas: CanvasItem, levels: Dictionary, progress: Dictionary, icons: Texture2D) -> void:
@@ -104,14 +104,3 @@ func _draw_atlas_icon(canvas: CanvasItem, texture: Texture2D, index: int, rect: 
 	var cell := float(texture.get_width()) / 3.0
 	var region := Rect2(float(index % 3) * cell, float(index / 3) * cell, cell, cell)
 	canvas.draw_texture_rect_region(texture, rect, region, tint)
-
-
-func _draw_digits(canvas: CanvasItem, text: String, x: float, y: float, pixel_size: int, color: Color) -> void:
-	var cursor := x
-	for ch in text:
-		var rows: Array = Config.DIGIT_MAP.get(ch, Config.DIGIT_MAP[" "])
-		for row in range(rows.size()):
-			for col in range(rows[row].length()):
-				if rows[row][col] == "1":
-					canvas.draw_rect(Rect2(cursor + col * pixel_size, y + row * pixel_size, pixel_size - 1, pixel_size - 1), color)
-		cursor += pixel_size * 4
