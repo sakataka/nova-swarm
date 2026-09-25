@@ -12,6 +12,19 @@ const BOSS_TELL_DANGER_WIDTH := 154.0
 const BOSS_BEAM_DANGER_WIDTH := 136.0
 const PATH_SAMPLE_TIMES: Array[float] = [0.15, 0.35, 0.6, 0.9, 1.2, 1.6]
 const LANE_HOLD_FRAMES := 12
+const PERSONALITIES := ["balanced", "aggressive", "careful"]
+# Weight profiles: how much the pilot fears danger, how hard it pushes toward
+# its attack position, how much it values chain targets and when it bombs.
+const PROFILES := {
+	"balanced": {"danger": 6.4, "intent": 0.0044, "chain": 55.0, "bomb": 1.0, "item": 1.0},
+	"aggressive": {"danger": 5.2, "intent": 0.0064, "chain": 95.0, "bomb": 0.9, "item": 0.8},
+	"careful": {"danger": 8.2, "intent": 0.0034, "chain": 35.0, "bomb": 1.12, "item": 1.25},
+}
+
+var personality := "balanced"
+# When enabled, the last decision is kept for the spectator overlay.
+var record_debug := false
+var debug := {}
 
 var _held_target := Vector2.ZERO
 var _held_intent := Vector2.ZERO
@@ -22,6 +35,15 @@ func reset() -> void:
 	_held_target = Vector2.ZERO
 	_held_intent = Vector2.ZERO
 	_hold_frames = 0
+	debug = {}
+
+
+func cycle_personality() -> void:
+	personality = PERSONALITIES[(PERSONALITIES.find(personality) + 1) % PERSONALITIES.size()]
+
+
+func _profile() -> Dictionary:
+	return PROFILES.get(personality, PROFILES.balanced)
 
 
 func get_command(player: RefCounted, enemies: Array, boss: Dictionary, bullets: Array, items: Array, on_beat := true) -> Dictionary:
@@ -40,7 +62,29 @@ func get_command(player: RefCounted, enemies: Array, boss: Dictionary, bullets: 
 	command.move_vector = move_vector
 	command.move_axis = move_vector.x
 	command.bomb = _should_use_bomb(player, enemies, boss, immediate_danger, danger)
+	if record_debug:
+		debug.target = target
+		debug.intent = intent
+		debug.danger = immediate_danger
+		debug.lane_danger = danger
+		debug.mode = _describe_mode(command, player, items, immediate_danger, danger)
 	return command
+
+
+func _describe_mode(command: Dictionary, player: RefCounted, items: Array, immediate_danger: float, lane_danger: float) -> String:
+	if command.bomb:
+		return "BOMB"
+	if command.overdrive:
+		return "OVERDRIVE"
+	if player.can_overdrive():
+		return "SYNC WAIT"
+	if immediate_danger >= 1.6 or lane_danger >= 1.4:
+		return "EVADE"
+	if not items.is_empty() and _should_chase_item(player, items, immediate_danger, 2):
+		return "COLLECT"
+	if int(debug.get("target_chain", 0)) >= 2:
+		return "CHAIN HUNT"
+	return "ATTACK"
 
 
 func _choose_intent_position(player: RefCounted, enemies: Array, boss: Dictionary, items: Array, danger: float) -> Vector2:
@@ -60,15 +104,20 @@ func _choose_lane(player: RefCounted, bullets: Array, enemies: Array, boss: Dict
 	var best_danger := 0.0
 	var held_score := INF
 	var held_danger := INF
+	var danger_weight: float = _profile().danger
+	var intent_weight: float = _profile().intent
+	var samples: Array = []
 	for candidate in candidates:
 		var position: Vector2 = candidate
 		var danger := _path_danger(current, position, player, bullets, enemies, boss)
 		var travel_cost := position.distance_to(current) * (0.001 if danger < 1.0 else 0.0024)
-		var intent_cost := position.distance_to(intent) * (0.0044 if danger < 0.9 else 0.00035)
+		var intent_cost := position.distance_to(intent) * (intent_weight if danger < 0.9 else 0.00035)
 		var edge_cost := 0.2 if position.x < 86.0 or position.x > Config.W - 86.0 else 0.0
 		edge_cost += 0.16 if position.y < MIN_Y + 28.0 or position.y > MAX_Y - 28.0 else 0.0
 		var item_bonus := _item_lane_bonus(position, player, items, danger, enemy_count)
-		var score := danger * 6.4 + travel_cost + intent_cost + edge_cost - item_bonus
+		var score := danger * danger_weight + travel_cost + intent_cost + edge_cost - item_bonus * float(_profile().item)
+		if record_debug:
+			samples.append([position, danger])
 		if position.distance_to(_held_target) < 2.0:
 			held_score = score
 			held_danger = danger
@@ -77,6 +126,8 @@ func _choose_lane(player: RefCounted, bullets: Array, enemies: Array, boss: Dict
 			best_position = position
 			best_danger = danger
 
+	if record_debug:
+		debug.samples = samples
 	var intent_is_stable := intent.distance_to(_held_intent) < 84.0
 	var held_lane_is_safe := _hold_frames > 0 and held_score <= best_score + 0.32 and held_danger < 1.45
 	if immediate_danger < 1.7 and intent_is_stable and held_lane_is_safe:
@@ -267,9 +318,13 @@ func _best_item(items: Array, player: RefCounted) -> Dictionary:
 
 func _best_attack_position(player: RefCounted, enemies: Array, boss: Dictionary) -> Vector2:
 	if not boss.is_empty():
+		if record_debug:
+			debug.target_id = -2
 		var side := 1.0 if player.x >= float(boss.x) else -1.0
 		return Vector2(clampf(float(boss.x) + side * 108.0, MIN_X, MAX_X), clampf(Config.PLAYER_Y - 62.0, MIN_Y, MAX_Y))
 	if enemies.is_empty():
+		if record_debug:
+			debug.target_id = -1
 		return Vector2(player.x, player.y)
 
 	var best: Dictionary = enemies[0]
@@ -278,11 +333,14 @@ func _best_attack_position(player: RefCounted, enemies: Array, boss: Dictionary)
 		var vertical_bias: float = maxf(0.0, player.y - enemy.y) * 0.08
 		var midboss_bonus := -90.0 if str(enemy.kind).begins_with("mid_") else 0.0
 		# Prefer network nodes whose destruction would chain into their neighbors.
-		var chain_bonus := -float(enemy.get("chain_value", 0)) * 55.0
+		var chain_bonus := -float(enemy.get("chain_value", 0)) * float(_profile().chain)
 		var score := absf(enemy.x - player.x) - vertical_bias + midboss_bonus + chain_bonus
 		if score < best_score:
 			best_score = score
 			best = enemy
+	if record_debug:
+		debug.target_id = int(best.get("id", -1))
+		debug.target_chain = int(best.get("chain_value", 0))
 	var target_y := clampf(float(best.y) + (285.0 if str(best.kind).begins_with("mid_") else 250.0), MIN_Y, MAX_Y)
 	return Vector2(clampf(float(best.x), MIN_X, MAX_X), target_y)
 
@@ -291,6 +349,9 @@ func _should_use_bomb(player: RefCounted, enemies: Array, boss: Dictionary, imme
 	if not player.can_bomb():
 		return false
 	var is_midboss_fight: bool = enemies.any(func(enemy: Dictionary) -> bool: return str(enemy.kind).begins_with("mid_") and int(enemy.hp) > 0)
+	var bomb_scale: float = _profile().bomb
+	immediate_danger *= bomb_scale
+	lane_danger *= bomb_scale
 	var lethal_pressure := immediate_danger >= 4.4 or lane_danger >= 3.8
 	if lethal_pressure:
 		return true

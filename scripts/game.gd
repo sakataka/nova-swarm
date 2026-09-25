@@ -63,6 +63,17 @@ var ai_pilot = AiPilotScript.new()
 var beat_clock = BeatClockScript.new()
 var network = ResonanceNetworkScript.new()
 var best_chain := 0
+const AI_PACE_PATH := "user://ai_pace.json"
+const AI_PACE_STEP := 5.0
+var show_ai_overlay := true
+var highlight_timer := 0.0
+var highlight_strength := 0.0
+var highlight_focus := Vector2(480, 400)
+var highlight_label := ""
+var _graze_highlight_cooldown := 0.0
+var run_time := 0.0
+var ai_pace: Array = []
+var _pace_record: Array = []
 var _pending_beat_tick := false
 var _sync_popup_cooldown := 0.0
 var audio_manager
@@ -137,6 +148,7 @@ func _ready() -> void:
 	_setup_web_audio_lifecycle()
 	_setup_overdrive_particles()
 	_setup_render_layers()
+	_setup_spectator()
 	audio_manager.play_music("title", 0.25)
 	_parse_web_query()
 	queue_redraw()
@@ -279,6 +291,62 @@ func _setup_render_layers() -> void:
 	add_child(ui_layer)
 
 
+func _setup_spectator() -> void:
+	if not InputMap.has_action("toggle_ai_overlay"):
+		InputMap.add_action("toggle_ai_overlay")
+		var key := InputEventKey.new()
+		key.keycode = KEY_V
+		InputMap.action_add_event("toggle_ai_overlay", key)
+	ai_pace = _load_ai_pace()
+
+
+func _load_ai_pace() -> Array:
+	if not FileAccess.file_exists(AI_PACE_PATH):
+		return []
+	var file := FileAccess.open(AI_PACE_PATH, FileAccess.READ)
+	if file == null:
+		return []
+	var data: Variant = JSON.parse_string(file.get_as_text())
+	if typeof(data) != TYPE_DICTIONARY or typeof(data.get("scores")) != TYPE_ARRAY:
+		return []
+	return data.scores
+
+
+# Keeps the best AI Demo run's score curve so manual runs can race against it.
+func _finish_run() -> void:
+	if control_mode != ControlMode.AI:
+		return
+	_pace_record.append(score)
+	var best_final: int = int(ai_pace[-1]) if not ai_pace.is_empty() else -1
+	if score <= best_final:
+		return
+	ai_pace = _pace_record.duplicate()
+	if DisplayServer.get_name() == "headless":
+		return
+	var file := FileAccess.open(AI_PACE_PATH, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify({"scores": ai_pace, "step": AI_PACE_STEP}))
+
+
+func _ai_pace_score(time: float) -> int:
+	if ai_pace.is_empty():
+		return -1
+	var position := time / AI_PACE_STEP
+	var index := int(floorf(position))
+	if index >= ai_pace.size() - 1:
+		return int(ai_pace[-1])
+	return int(lerpf(float(ai_pace[index]), float(ai_pace[index + 1]), position - float(index)))
+
+
+# AI Demo only: slow motion and a camera push toward a big moment.
+func _trigger_highlight(focus: Vector2, label: String, duration := 0.8) -> void:
+	if control_mode != ControlMode.AI or state != GameState.PLAYING:
+		return
+	highlight_timer = maxf(highlight_timer, duration)
+	highlight_focus = focus
+	highlight_label = label
+
+
 func _setup_native_window() -> void:
 	if OS.get_name() == "Web":
 		return
@@ -302,11 +370,14 @@ func _process(delta: float) -> void:
 		audio_manager.update_music(dt)
 		_update_visuals(dt * 0.25)
 		return
+	highlight_timer = maxf(0.0, highlight_timer - dt)
+	highlight_strength = move_toward(highlight_strength, 1.0 if highlight_timer > 0.0 else 0.0, dt * (6.0 if highlight_timer > 0.0 else 2.5))
+	var game_dt := dt * lerpf(1.0, 0.35, highlight_strength)
 	if state == GameState.PLAYING:
-		_update_game(dt)
+		_update_game(game_dt)
 	_update_feedback(dt)
 	audio_manager.update_music(dt)
-	_update_visuals(dt)
+	_update_visuals(game_dt)
 
 
 func _update_visuals(dt: float) -> void:
@@ -322,8 +393,10 @@ func _update_visuals(dt: float) -> void:
 		var shake := Vector2.ZERO
 		if screen_shake > 0.0:
 			shake = Vector2(fx.rng.randf_range(-screen_shake, screen_shake), fx.rng.randf_range(-screen_shake, screen_shake)).round()
-		var zoom_offset := Vector2(Config.W, Config.H) * 0.5 * (1.0 - overdrive_zoom)
-		_world_xform = Transform2D(0.0, Vector2(overdrive_zoom, overdrive_zoom), 0.0, shake + zoom_offset)
+		var zoom := overdrive_zoom * (1.0 + 0.08 * highlight_strength)
+		var pivot := Vector2(Config.W, Config.H) * 0.5
+		pivot = pivot.lerp(Vector2(highlight_focus.x, clampf(highlight_focus.y, Config.HUD + 120.0, Config.H - 120.0)), highlight_strength)
+		_world_xform = Transform2D(0.0, Vector2(zoom, zoom), 0.0, shake + pivot - pivot * zoom)
 		fx.transform = _world_xform
 		fx.visible = state in [GameState.PLAYING, GameState.PAUSED]
 		fx.queue_redraw()
@@ -346,6 +419,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif state == GameState.TITLE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
 		_toggle_selected_control_mode()
+		get_viewport().set_input_as_handled()
+	elif state == GameState.TITLE and selected_control_mode == ControlMode.AI and (event.is_action_pressed("move_up") or event.is_action_pressed("move_down")):
+		ai_pilot.cycle_personality()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("toggle_ai_overlay") and state in [GameState.PLAYING, GameState.PAUSED]:
+		show_ai_overlay = not show_ai_overlay
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_accept") and state in [GameState.TITLE, GameState.GAME_OVER, GameState.VICTORY]:
 		reset()
@@ -473,6 +552,9 @@ func _select_title_mode_at(position: Vector2) -> bool:
 		selected_control_mode = ControlMode.MANUAL
 		return true
 	if Rect2(hitboxes.ai).has_point(position):
+		# Clicking AI DEMO again cycles the pilot personality.
+		if selected_control_mode == ControlMode.AI:
+			ai_pilot.cycle_personality()
 		selected_control_mode = ControlMode.AI
 		return true
 	if _title_start_hitbox().has_point(position):
@@ -492,6 +574,11 @@ func reset() -> void:
 	best_chain = 0
 	control_mode = selected_control_mode
 	ai_pilot.reset()
+	ai_pilot.record_debug = control_mode == ControlMode.AI
+	run_time = 0.0
+	_pace_record = []
+	highlight_timer = 0.0
+	highlight_strength = 0.0
 	player.reset_run(Config.W / 2.0, Config.PLAYER_Y)
 	state = GameState.PLAYING
 	audio_manager.set_music_overdriven(false)
@@ -601,6 +688,10 @@ func _update_stage_gimmicks(dt: float) -> void:
 
 func _update_game(dt: float) -> void:
 	stage_timer += dt
+	run_time += dt
+	_graze_highlight_cooldown = maxf(0.0, _graze_highlight_cooldown - dt)
+	while float(_pace_record.size()) * AI_PACE_STEP <= run_time:
+		_pace_record.append(score)
 	_update_stage_progression(dt)
 	var command := _read_player_command()
 	player.update(dt, command["move_vector"])
@@ -706,6 +797,8 @@ func _on_enemy_surged(enemy: Dictionary, surge: Dictionary, by_id: Dictionary) -
 	var big: bool = enemy.kind in ["armor", "saucer", "commander"] or is_midboss
 	explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": big})
 	_spawn_death_fx(enemy, big)
+	if chain_count == 6:
+		_trigger_highlight(Vector2(enemy.x, enemy.y), "CHAIN x6")
 	if fx and chain_count >= 3:
 		var chain: Dictionary = network.chains.get(int(surge.chain_id), {})
 		var origin: Vector2 = chain.get("origin", Vector2(enemy.x, enemy.y))
@@ -1042,6 +1135,9 @@ func _check_collisions() -> void:
 			if distance >= 27.0 + bullet.r and distance < 58.0 + bullet.r:
 				bullet.grazed = true
 				var synced := beat_clock.is_on_beat()
+				if distance < 36.0 + bullet.r and _graze_highlight_cooldown <= 0.0 and control_mode == ControlMode.AI:
+					_graze_highlight_cooldown = 6.0
+					_trigger_highlight(Vector2(player.x, player.y), "RAZOR GRAZE", 0.45)
 				if fx:
 					fx.burst(Vector2(bullet.x, bullet.y), Color(1.0, 0.9, 0.5) if synced else Color(0.55, 0.95, 1.0), 6 if synced else 4, 150.0, 0.22, 1.4)
 					if synced and _sync_popup_cooldown <= 0.0:
@@ -1131,6 +1227,7 @@ func _hurt() -> void:
 		if not _has_stage_result(stage):
 			_record_stage_result()
 		state = GameState.GAME_OVER
+		_finish_run()
 		audio_manager.set_music_overdriven(false)
 		audio_manager.set_music_ducked(false)
 		audio_manager.play_music("game_over")
@@ -1160,6 +1257,7 @@ func _check_stage_end() -> void:
 		explosions.append({"x": boss_controller.boss.x, "y": boss_controller.boss.y, "t": 0.0, "big": true})
 		boss_controller.clear()
 		state = GameState.VICTORY
+		_finish_run()
 		audio_manager.set_music_overdriven(false)
 		_add_shake(7.0)
 		_add_flash(0.72, 0.04)
@@ -1268,6 +1366,7 @@ func _handle_commander_defeat(enemy: Dictionary) -> void:
 	var chain_id: int = network.start_chain(Vector2(enemy.x, enemy.y))
 	if network.collapse(enemy, chain_id, by_id) > 0 and fx:
 		fx.popup(Vector2(enemy.x, enemy.y + 40.0), "NETWORK COLLAPSE", Color("#ffe27a"), 24, 1.2)
+		_trigger_highlight(Vector2(enemy.x, enemy.y), "NETWORK COLLAPSE", 1.0)
 		fx.ring(Vector2(enemy.x, enemy.y), Color(1.0, 0.75, 0.4, 0.9), 520.0, 0.8, 5.0, 40.0)
 	var kept_bullets: Array[Dictionary] = []
 	for bullet in projectiles.bullets:
@@ -1278,6 +1377,7 @@ func _handle_commander_defeat(enemy: Dictionary) -> void:
 
 
 func _handle_midboss_defeat(enemy: Dictionary) -> void:
+	_trigger_highlight(Vector2(enemy.x, enemy.y), "MIDBOSS DOWN", 0.9)
 	player.add_resonance(34.0)
 	player.shield = mini(player.shield_max, player.shield + 1)
 	for i in range(8):
@@ -1321,6 +1421,11 @@ func draw_ui_pass(canvas: CanvasItem) -> void:
 		hud.draw_hud(_c, font, display_font, score, stage, stage_wave, int(Config.STAGES[stage].get("waves", 1)), player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), player.chip_levels, player.chip_progress, audio_manager.muted, hud_chassis_texture, status_icons_texture)
 	if state in [GameState.PLAYING, GameState.PAUSED]:
 		_draw_beat_pips()
+		_draw_highlight_frame()
+		if control_mode == ControlMode.AI:
+			_draw_ai_readout()
+		else:
+			_draw_ai_pace()
 	if flash > 0.0:
 		_c.draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.34))
 	if stage_banner > 0.0 and state == GameState.PLAYING:
@@ -1565,6 +1670,59 @@ func draw_light_pass(canvas: Node2D) -> void:
 		canvas.glow_stretched(Vector2(wave.x, (Config.HUD + player.y) * 0.5), Color(0.5, 0.95, 1.0, 0.5 * (1.0 - progress)), Vector2(wave.width * 1.6, player.y - Config.HUD))
 	if state == GameState.PLAYING or state == GameState.PAUSED:
 		_draw_player_lights(canvas)
+		if control_mode == ControlMode.AI and show_ai_overlay:
+			_draw_ai_overlay(canvas)
+
+
+# Tactical hologram of the AI Pilot's reasoning: sampled lanes, chosen path, threats and lock-on.
+func _draw_ai_overlay(canvas: Node2D) -> void:
+	var debug: Dictionary = ai_pilot.debug
+	if debug.is_empty():
+		return
+	var player_pos := Vector2(player.x, player.y)
+	var holo := Color(0.35, 0.95, 1.0)
+	for sample in debug.get("samples", []):
+		var sample_danger := clampf(float(sample[1]) / 2.4, 0.0, 1.0)
+		var color := Color(0.3, 1.0, 0.65).lerp(Color(1.0, 0.3, 0.25), sample_danger)
+		var pos: Vector2 = sample[0]
+		canvas.draw_rect(Rect2(pos - Vector2(2, 2), Vector2(4, 4)), Color(color, 0.16 + sample_danger * 0.2))
+	for bullet in projectiles.bullets:
+		if not bullet.enemy:
+			continue
+		var bullet_pos := Vector2(bullet.x, bullet.y)
+		if bullet_pos.distance_to(player_pos) > 320.0:
+			continue
+		var future := bullet_pos + Vector2(bullet.vx, bullet.vy) * 0.45
+		canvas.draw_line(bullet_pos, future, Color(1.0, 0.4, 0.3, 0.32), 1.0, true)
+	var target: Vector2 = debug.get("target", player_pos)
+	if target.distance_to(player_pos) > 6.0:
+		var steps := 10
+		for i in range(steps):
+			if i % 2 == 1:
+				continue
+			var a := player_pos.lerp(target, float(i) / float(steps))
+			var b := player_pos.lerp(target, float(i + 1) / float(steps))
+			canvas.draw_line(a, b, Color(holo, 0.55), 1.5, true)
+	canvas.draw_arc(target, 9.0, 0.0, TAU, 20, Color(holo, 0.7), 1.5, true)
+	canvas.draw_line(target + Vector2(-14, 0), target + Vector2(-6, 0), Color(holo, 0.7), 1.0)
+	canvas.draw_line(target + Vector2(6, 0), target + Vector2(14, 0), Color(holo, 0.7), 1.0)
+	var lock_pos := Vector2.INF
+	var lock_radius := 40.0
+	var target_id := int(debug.get("target_id", -1))
+	if target_id == -2 and boss_controller.is_alive():
+		lock_pos = Vector2(boss_controller.boss.x, boss_controller.boss.y + 40.0)
+		lock_radius = 120.0
+	elif target_id >= 0:
+		for enemy in swarm.enemies:
+			if int(enemy.id) == target_id:
+				lock_pos = Vector2(enemy.x, enemy.y)
+				lock_radius = _enemy_draw_size(enemy) * 0.62
+				break
+	if lock_pos != Vector2.INF:
+		var spin := stage_timer * 2.2
+		for i in range(4):
+			var start_angle := spin + float(i) * PI * 0.5
+			canvas.draw_arc(lock_pos, lock_radius, start_angle, start_angle + 0.5, 8, Color(1.0, 0.8, 0.4, 0.75), 2.0, true)
 
 
 func _link_color(link: Dictionary) -> Color:
@@ -2127,6 +2285,9 @@ func _draw_title_mode_select(y: float) -> void:
 	var hitboxes := _title_mode_hitboxes(y)
 	_draw_title_control(Rect2(hitboxes.manual), selected_control_mode == ControlMode.MANUAL, "MANUAL")
 	_draw_title_control(Rect2(hitboxes.ai), selected_control_mode == ControlMode.AI, "AI DEMO")
+	var ai_rect := Rect2(hitboxes.ai)
+	var personality_color := Config.UI_AMBER if selected_control_mode == ControlMode.AI else Color(Config.UI_TEXT, 0.45)
+	_draw_centered_in_width("< " + str(ai_pilot.personality).to_upper() + " >", ai_rect.position.x, ai_rect.size.x, ai_rect.position.y + 54.0, 10, personality_color)
 
 
 func _draw_title_start_button() -> void:
@@ -2165,6 +2326,52 @@ func _title_mode_text_positions(y: float, manual_text: String, ai_text: String) 
 
 func _control_mode_label(mode: int) -> String:
 	return "AI DEMO" if mode == ControlMode.AI else "MANUAL"
+
+
+func _draw_highlight_frame() -> void:
+	if highlight_strength <= 0.01:
+		return
+	var bar := 28.0 * highlight_strength
+	_c.draw_rect(Rect2(0, Config.HUD, Config.W, bar), Color(0, 0, 0, 0.85))
+	_c.draw_rect(Rect2(0, Config.H - bar, Config.W, bar), Color(0, 0, 0, 0.85))
+	if highlight_label != "" and highlight_strength > 0.5:
+		var alpha := (highlight_strength - 0.5) * 2.0
+		_c.draw_string(font, Vector2(18, Config.H - 9.0), "AI HIGHLIGHT  /  " + highlight_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(Config.UI_AMBER, alpha))
+
+
+func _draw_ai_readout() -> void:
+	var debug: Dictionary = ai_pilot.debug
+	var rect := Rect2(12.0, Config.HUD + (40.0 if boss_controller.is_alive() else 10.0), 176.0, 44.0)
+	_c.draw_rect(rect, Color(Config.UI_PANEL_DARK, 0.62))
+	_c.draw_rect(rect, Color(Config.UI_CYAN, 0.28), false, 1.0)
+	_c.draw_string(font, rect.position + Vector2(10, 16), "AI PILOT / " + str(ai_pilot.personality).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Config.UI_CYAN)
+	var mode := str(debug.get("mode", "STANDBY"))
+	var mode_color := Config.UI_RED if mode in ["EVADE", "BOMB"] else Config.UI_AMBER if mode in ["OVERDRIVE", "SYNC WAIT", "CHAIN HUNT"] else Config.UI_TEXT
+	_c.draw_string(display_font if display_font else font, rect.position + Vector2(10, 34), mode, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, mode_color)
+	var danger := clampf(float(debug.get("danger", 0.0)) / 3.0, 0.0, 1.0)
+	var meter := Rect2(rect.position.x + 112.0, rect.position.y + 26.0, 54.0, 5.0)
+	_c.draw_rect(meter, Color(1, 1, 1, 0.1))
+	_c.draw_rect(Rect2(meter.position, Vector2(meter.size.x * danger, meter.size.y)), Color(0.3, 1.0, 0.65).lerp(Config.UI_RED, danger))
+	if not show_ai_overlay:
+		_c.draw_string(font, rect.position + Vector2(112, 16), "V: HOLO", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(Config.UI_TEXT, 0.5))
+
+
+# Manual runs race the best recorded AI Demo run.
+func _draw_ai_pace() -> void:
+	var pace := _ai_pace_score(run_time)
+	if pace < 0:
+		return
+	var delta := score - pace
+	var text := ("+" if delta >= 0 else "") + str(delta)
+	var rect := Rect2(Config.W - 172.0, Config.HUD + 10.0, 160.0, 24.0)
+	_c.draw_rect(rect, Color(Config.UI_PANEL_DARK, 0.55))
+	_c.draw_string(font, rect.position + Vector2(8, 16), "VS AI", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(Config.UI_TEXT, 0.7))
+	draw_text_right(text, Rect2(rect.position.x + 50.0, rect.position.y + 3.0, 102.0, 18.0), 14, Config.UI_GREEN if delta >= 0 else Config.UI_RED)
+
+
+func draw_text_right(text: String, rect: Rect2, size: int, color: Color) -> void:
+	var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	_c.draw_string(font, Vector2(rect.end.x - width, rect.position.y + float(size)), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 
 # Four pips under the Overdrive gauge show the bar; the lit window marks a sync-bonus timing.
@@ -2247,6 +2454,7 @@ func _damage_boss_part(point: Vector2, power: int) -> int:
 				fx.ring(part_pos, Color(1.0, 0.7, 0.4, 0.9), 200.0, 0.5, 5.0)
 				fx.flash_glow(part_pos, Color(1.0, 0.85, 0.6, 1.0), 260.0, 0.3)
 				fx.popup(part_pos, "CORE BREAK", Config.UI_AMBER, 22, 1.0)
+			_trigger_highlight(part_pos, "CORE BREAK", 0.9)
 			return 8
 		return 2
 	return 0

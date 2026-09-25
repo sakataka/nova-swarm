@@ -107,6 +107,15 @@ func _initialize() -> void:
 	scene.selected_control_mode = scene.ControlMode.AI
 	scene.reset()
 	_assert(scene.control_mode == scene.ControlMode.AI, "ai selection starts ai play")
+	_assert(scene.ai_pilot.record_debug, "ai demo records the pilot's reasoning for the overlay")
+	var personality_before: String = scene.ai_pilot.personality
+	scene.ai_pilot.cycle_personality()
+	_assert(scene.ai_pilot.personality != personality_before, "ai personality cycles")
+	scene.ai_pilot.personality = "balanced"
+	scene._trigger_highlight(Vector2(480, 300), "TEST")
+	_assert(scene.highlight_timer > 0.0, "ai demo highlights big moments")
+	scene.highlight_timer = 0.0
+	scene.highlight_strength = 0.0
 	_assert(scene.font != ThemeDB.fallback_font, "embedded Oxanium font replaces the system fallback")
 	_assert(scene.overdrive_mote_texture != null, "overdrive aura texture is loaded")
 	_assert(scene.score_crystal_texture != null, "score crystal atlas is loaded")
@@ -117,6 +126,7 @@ func _initialize() -> void:
 
 	var ai_command: Dictionary = scene.ai_pilot.get_command(scene.player, scene.swarm.enemies, scene.boss_controller.boss, [], [])
 	_assert(ai_command.shoot, "ai shoots when enemies are present")
+	_assert(not scene.ai_pilot.debug.get("samples", []).is_empty() and scene.ai_pilot.debug.has("mode"), "ai overlay data lists sampled lanes and the current mode")
 	var item_x: float = scene.player.x + 120.0
 	ai_command = scene.ai_pilot.get_command(scene.player, [], {}, [], [{"kind": "shield", "x": item_x, "y": scene.player.y - 120.0, "vy": 0.0, "t": 0.0}])
 	_assert(ai_command.move_axis > 0.0, "ai moves toward collectible item")
