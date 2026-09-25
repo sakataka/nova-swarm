@@ -34,7 +34,7 @@ func spawn() -> void:
 	}
 
 
-func update(dt: float, projectiles: RefCounted) -> bool:
+func update(dt: float, projectiles: RefCounted, beat_tick: Variant = null) -> bool:
 	if boss.is_empty():
 		return false
 	boss.t += dt
@@ -46,6 +46,12 @@ func update(dt: float, projectiles: RefCounted) -> bool:
 	if boss.shoot <= 0.0:
 		var alive_parts := _alive_part_count()
 		boss.shoot = [1.15, 0.9, 0.68][boss.phase] + float(3 - alive_parts) * 0.08
+		if beat_tick == null:
+			projectiles.fire_boss(boss.x, boss.y, boss.phase)
+		else:
+			boss.armed = true
+	if beat_tick == true and boss.get("armed", false):
+		boss.armed = false
 		projectiles.fire_boss(boss.x, boss.y, boss.phase)
 
 	boss.beam -= dt

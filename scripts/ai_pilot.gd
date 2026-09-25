@@ -24,14 +24,14 @@ func reset() -> void:
 	_hold_frames = 0
 
 
-func get_command(player: RefCounted, enemies: Array, boss: Dictionary, bullets: Array, items: Array) -> Dictionary:
+func get_command(player: RefCounted, enemies: Array, boss: Dictionary, bullets: Array, items: Array, on_beat := true) -> Dictionary:
 	var command := COMMAND_IDLE.duplicate()
 	var has_target := not enemies.is_empty() or not boss.is_empty()
 	command.shoot = has_target
-	command.overdrive = has_target and player.can_overdrive()
-
 	var player_pos := Vector2(player.x, player.y)
 	var immediate_danger := _danger_at_position(player_pos, player, bullets, enemies, boss)
+	# Wait for the beat to earn the sync bonus unless the ship is already under pressure.
+	command.overdrive = has_target and player.can_overdrive() and (on_beat or immediate_danger >= 2.2)
 	var intent := _choose_intent_position(player, enemies, boss, items, immediate_danger)
 	var lane := _choose_lane(player, bullets, enemies, boss, items, intent, enemies.size(), immediate_danger)
 	var target: Vector2 = lane["position"]

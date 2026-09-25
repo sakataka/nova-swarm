@@ -11,6 +11,7 @@ const HudScript := preload("res://scripts/hud.gd")
 const AiPilotScript := preload("res://scripts/ai_pilot.gd")
 const FxLayerScript := preload("res://scripts/fx_layer.gd")
 const UiLayerScript := preload("res://scripts/ui_layer.gd")
+const BeatClockScript := preload("res://scripts/beat_clock.gd")
 
 enum GameState { TITLE, PLAYING, PAUSED, GAME_OVER, VICTORY }
 enum ControlMode { MANUAL, AI }
@@ -58,6 +59,9 @@ var swarm = EnemySwarmScript.new()
 var boss_controller = BossControllerScript.new()
 var hud = HudScript.new()
 var ai_pilot = AiPilotScript.new()
+var beat_clock = BeatClockScript.new()
+var _pending_beat_tick := false
+var _sync_popup_cooldown := 0.0
 var audio_manager
 
 var explosions: Array[Dictionary] = []
@@ -286,6 +290,9 @@ func _setup_native_window() -> void:
 
 func _process(delta: float) -> void:
 	var dt: float = min(delta, 0.033)
+	beat_clock.update(dt, audio_manager.current_music_key, audio_manager.get_music_position())
+	if beat_clock.ticked:
+		_pending_beat_tick = true
 	if hitstop > 0.0:
 		hitstop = maxf(0.0, hitstop - dt)
 		_update_feedback(dt)
@@ -599,9 +606,12 @@ func _update_game(dt: float) -> void:
 		_use_bomb()
 
 	var st: Dictionary = Config.STAGES[stage]
-	swarm.update(dt, st, stage, stage_timer, difficulty, player.x, projectiles, Config.ENEMY_STATS)
+	var beat_tick := _pending_beat_tick
+	_pending_beat_tick = false
+	_sync_popup_cooldown = maxf(0.0, _sync_popup_cooldown - dt)
+	swarm.update(dt, st, stage, stage_timer, difficulty, player.x, projectiles, Config.ENEMY_STATS, beat_tick)
 	_track_enemy_motion(dt)
-	if boss_controller.update(dt, projectiles):
+	if boss_controller.update(dt, projectiles, beat_tick):
 		audio_manager.play_sfx("boss")
 	projectiles.update(dt)
 	_update_stage_gimmicks(dt)
@@ -662,7 +672,7 @@ func _update_overdrive_feedback() -> void:
 
 func _read_player_command() -> Dictionary:
 	if control_mode == ControlMode.AI:
-		return ai_pilot.get_command(player, swarm.enemies, boss_controller.boss, projectiles.bullets, items)
+		return ai_pilot.get_command(player, swarm.enemies, boss_controller.boss, projectiles.bullets, items, beat_clock.is_on_beat(0.12))
 	var touch_command := _read_touch_command()
 	return {
 		"move_axis": Input.get_axis("move_left", "move_right"),
@@ -704,6 +714,12 @@ func _fire_player() -> void:
 
 func _start_overdrive() -> void:
 	player.start_overdrive()
+	if beat_clock.is_on_beat():
+		player.overdrive_timer += 1.5
+		score += 500
+		if fx:
+			fx.popup(Vector2(player.x, player.y - 96.0), "PERFECT SYNC", Color("#ffe27a"), 24, 1.2)
+			fx.ring(Vector2(player.x, player.y), Color(1.0, 0.88, 0.45, 0.9), 420.0, 0.7, 4.0, 60.0)
 	audio_manager.set_music_overdriven(true)
 	audio_manager.play_sfx("overdrive")
 	_add_shake(4.0)
@@ -952,9 +968,13 @@ func _check_collisions() -> void:
 			var distance := _distance(bullet, player_pos)
 			if distance >= 27.0 + bullet.r and distance < 58.0 + bullet.r:
 				bullet.grazed = true
+				var synced := beat_clock.is_on_beat()
 				if fx:
-					fx.burst(Vector2(bullet.x, bullet.y), Color(0.55, 0.95, 1.0), 4, 150.0, 0.22, 1.4)
-				player.add_resonance(7.5)
+					fx.burst(Vector2(bullet.x, bullet.y), Color(1.0, 0.9, 0.5) if synced else Color(0.55, 0.95, 1.0), 6 if synced else 4, 150.0, 0.22, 1.4)
+					if synced and _sync_popup_cooldown <= 0.0:
+						_sync_popup_cooldown = 0.5
+						fx.popup(Vector2(player.x + 40.0, player.y - 40.0), "SYNC", Color("#ffe27a"), 14, 0.6)
+				player.add_resonance(12.0 if synced else 7.5)
 				score += 25 if player.is_overdrive_active() else 5
 				if player.graze_chain_bonus:
 					player.combo = maxi(1, player.combo + 1)
@@ -1225,6 +1245,8 @@ func draw_ui_pass(canvas: CanvasItem) -> void:
 		fx.draw_popups(canvas, display_font if display_font else font, _world_xform)
 	if state in [GameState.PLAYING, GameState.PAUSED]:
 		hud.draw_hud(_c, font, display_font, score, stage, stage_wave, int(Config.STAGES[stage].get("waves", 1)), player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), player.chip_levels, player.chip_progress, audio_manager.muted, hud_chassis_texture, status_icons_texture)
+	if state in [GameState.PLAYING, GameState.PAUSED]:
+		_draw_beat_pips()
 	if flash > 0.0:
 		_c.draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.34))
 	if stage_banner > 0.0 and state == GameState.PLAYING:
@@ -1368,6 +1390,8 @@ func _enemy_region(enemy: Dictionary) -> Rect2:
 func _enemy_draw_size(enemy: Dictionary) -> float:
 	var is_midboss: bool = str(enemy.kind).begins_with("mid_")
 	var pulse := 1.0 + sin(stage_timer * 5.0 + float(enemy.id)) * (0.025 if is_midboss else 0.012)
+	# The whole formation breathes with the BGM beat.
+	pulse += beat_clock.pulse(6.0) * (0.03 if is_midboss else 0.05)
 	return float(enemy.size) * (1.92 if is_midboss else 1.74) * pulse
 
 
@@ -1412,9 +1436,18 @@ func _draw_renewal_enemy(enemy: Dictionary) -> void:
 func draw_light_pass(canvas: Node2D) -> void:
 	var st: Dictionary = Config.STAGES[stage]
 	var tint: Color = st.tint
+	var beat_pulse: float = beat_clock.pulse()
+	var bar_pulse: float = beat_clock.bar_pulse()
 	for i in range(4):
 		var nebula_pos := Vector2(fposmod(float(i) * 263.0 + stage_timer * 6.0, Config.W + 400.0) - 200.0, Config.HUD + 90.0 + float(i) * 150.0 + sin(stage_timer * 0.2 + float(i)) * 40.0)
-		canvas.glow(nebula_pos, Color(tint, 0.05), 520.0)
+		canvas.glow(nebula_pos, Color(tint, 0.05 + bar_pulse * 0.05), 520.0)
+	# Rhythm frame: side rails flash on each beat, a sonar sweep crosses the field once per bar.
+	var rail_color := Color(tint, 0.1 + beat_pulse * 0.45)
+	for rail_x in [5.0, Config.W - 5.0]:
+		canvas.draw_line(Vector2(rail_x, Config.HUD), Vector2(rail_x, Config.H), rail_color, 2.0)
+		canvas.glow_stretched(Vector2(rail_x, (Config.HUD + Config.H) * 0.5), Color(tint, beat_pulse * 0.22), Vector2(34.0, Config.PLAY_H))
+	var sweep_y := Config.HUD + fposmod(beat_clock.beat, 4.0) / 4.0 * Config.PLAY_H
+	canvas.glow_stretched(Vector2(Config.W * 0.5, sweep_y), Color(tint, 0.05), Vector2(Config.W * 1.4, 26.0))
 	for bullet in projectiles.bullets:
 		var pos := Vector2(bullet.x, bullet.y)
 		var color: Color = bullet.color
@@ -1469,6 +1502,11 @@ func _draw_enemy_lights(canvas: Node2D, enemy: Dictionary) -> void:
 	canvas.glow_stretched(engine_pos + up * flame_len * 0.35, Color(1.0, 0.5, 0.22, 0.8 if diving else 0.55), Vector2(draw_size * 0.32, flame_len))
 	var core_pulse := 0.55 + sin(stage_timer * 4.0 + float(enemy.id)) * 0.2
 	canvas.glow(center, Color(base_color, (0.4 if is_midboss else 0.26) * core_pulse), draw_size * (1.3 if is_midboss else 0.95))
+	if enemy.get("armed", false):
+		# Shot telegraph: the core charges and a ring closes in until the next beat releases the shot.
+		var remaining := 1.0 - beat_clock.phase()
+		canvas.glow(center, Color(1.0, 0.45, 0.3, 0.55 * (1.0 - remaining) + 0.15), draw_size * 0.8)
+		canvas.draw_arc(center, draw_size * (0.22 + remaining * 0.45), 0.0, TAU, 28, Color(1.0, 0.55, 0.35, 0.3 + (1.0 - remaining) * 0.5), 2.0, true)
 	var hit_flash := float(enemy.get("flash", 0.0))
 	if hit_flash > 0.0 and enemy_fleet_texture:
 		canvas.draw_set_transform_matrix(Transform2D(rotation, center))
@@ -1999,6 +2037,18 @@ func _title_mode_text_positions(y: float, manual_text: String, ai_text: String) 
 
 func _control_mode_label(mode: int) -> String:
 	return "AI DEMO" if mode == ControlMode.AI else "MANUAL"
+
+
+# Four pips under the Overdrive gauge show the bar; the lit window marks a sync-bonus timing.
+func _draw_beat_pips() -> void:
+	var bar_index: int = beat_clock.bar_position()
+	var on_beat: bool = beat_clock.is_on_beat()
+	var pulse: float = beat_clock.pulse()
+	for i in range(4):
+		var rect := Rect2(84.0 + float(i) * 24.0, 65.0, 20.0, 3.0)
+		var active := i == bar_index
+		var color := Color("#ffe27a") if active and on_beat else Config.UI_CYAN
+		_c.draw_rect(rect, Color(color, 0.85 * pulse + 0.15 if active else 0.18))
 
 
 func _draw_stage_banner(text: String, y: float, alpha: float) -> void:

@@ -191,6 +191,17 @@ func update_music(dt: float) -> void:
 	_update_fallback_fade(dt)
 
 
+# Seconds into the current music loop, or -1 when no music is audible.
+func get_music_position() -> float:
+	if not _enabled or muted or not _app_active or _music_players.is_empty():
+		return -1.0
+	var player := _music_players[_active_music_player]
+	if not player.playing or player.stream == null:
+		return -1.0
+	var position := player.get_playback_position() + AudioServer.get_time_since_last_mix() - AudioServer.get_output_latency()
+	return fposmod(position, maxf(0.01, player.stream.get_length()))
+
+
 func play_sfx(sfx_name: String) -> void:
 	if muted or not _enabled or not _app_active or not sfx_streams.has(sfx_name):
 		return

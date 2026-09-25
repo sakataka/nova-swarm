@@ -215,7 +215,7 @@ func _initialize() -> void:
 	scene.projectiles.bullets.append({"x": scene.player.x + 24.0, "y": scene.player.y - 90.0, "vx": 0.0, "vy": 0.0, "enemy": true, "r": 5.0, "power": 1, "color": Color.WHITE})
 	scene._update_stage_gimmicks(1.0 / 60.0)
 	_assert(scene.score_crystals.size() > 0, "overdrive converts nearby enemy bullets into score crystals")
-	scene.player.update(5.1, Vector2.ZERO)
+	scene.player.update(scene.player.overdrive_timer + 0.1, Vector2.ZERO)
 	_assert(not scene.player.is_overdrive_active(), "overdrive expires back to normal")
 	scene._update_overdrive_feedback()
 	_assert(not scene.audio_manager._music_overdriven, "overdrive music layer drops out after expiry")
@@ -280,6 +280,30 @@ func _initialize() -> void:
 	_assert(dive_preview_right <= Config.W - 36.0, "dive preview clamps to right playfield")
 	scene.queue_redraw()
 	await process_frame
+
+	var clock = scene.beat_clock
+	clock.reset("stage_drive")
+	clock.update(60.0 / 132.0 + 0.001, "stage_drive")
+	_assert(clock.ticked, "beat clock ticks at the stage BPM")
+	_assert(clock.is_on_beat(), "right after a tick counts as on beat")
+	clock.update(0.5 * 60.0 / 132.0, "stage_drive")
+	_assert(not clock.ticked and not clock.is_on_beat(), "half a beat later is off beat")
+	scene.load_stage(0)
+	scene.projectiles.clear()
+	var commander_stats: Dictionary = Config.ENEMY_STATS.commander
+	scene.swarm.enemies.clear()
+	scene.swarm.enemies.append({"id": 4242, "kind": "commander", "x": 480.0, "y": 180.0, "base_x": 480.0, "base_y": 180.0, "hp": 14, "max_hp": 14, "t": 0.0, "dive": 0.0, "shoot": 0.0, "score": 1600, "size": float(commander_stats.size)})
+	scene.swarm.update(1.0 / 60.0, Config.STAGES[0], 0, 1.0, 1.0, 480.0, scene.projectiles, Config.ENEMY_STATS, false)
+	_assert(scene.swarm.enemies[0].get("armed", false) and scene.projectiles.bullets.is_empty(), "enemy shots are armed until the beat")
+	scene.swarm.update(1.0 / 60.0, Config.STAGES[0], 0, 1.0, 1.0, 480.0, scene.projectiles, Config.ENEMY_STATS, true)
+	_assert(not scene.projectiles.bullets.is_empty(), "armed enemy shots release on the beat")
+	scene.player.resonance = 100.0
+	scene.player.overdrive_timer = 0.0
+	clock.reset("stage_drive")
+	scene._start_overdrive()
+	_assert(scene.player.overdrive_timer > scene.player.get_overdrive_duration(), "overdrive on the beat earns a sync extension")
+	scene.player.overdrive_timer = 0.0
+	scene.projectiles.clear()
 
 	scene.load_stage(5)
 	_assert(scene.boss_controller.is_alive(), "boss stage spawns boss")

@@ -99,7 +99,8 @@ func _spawn_midbosses(count: int, enemy_stats: Dictionary, difficulty: float) ->
 		next_id += 1
 
 
-func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: float, difficulty: float, player_x: float, projectiles: RefCounted, enemy_stats: Dictionary) -> void:
+# When `beat_tick` is not null, shots are armed by the timers and released on the next BGM beat.
+func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: float, difficulty: float, player_x: float, projectiles: RefCounted, enemy_stats: Dictionary, beat_tick: Variant = null) -> void:
 	if enemies.is_empty():
 		return
 	var edge := false
@@ -148,10 +149,14 @@ func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: fl
 			var kind_mult := 1.7 if enemy.kind == "saucer" else 1.45 if is_commander else 1.18 if is_midboss else 1.0
 			var chance: float = stage_data.fire * difficulty * command_fire_mult * kind_mult
 			enemy.shoot = 1.2 + (randf() * 3.4 / maxf(0.55, chance))
-			if is_commander or is_midboss:
-				projectiles.fire_enemy(enemy, player_x, enemy_stats)
-			elif randf() < 0.2 + stage_index * 0.035 or enemy.dive > 0.0:
-				projectiles.fire_enemy(enemy, player_x, enemy_stats)
+			if is_commander or is_midboss or randf() < 0.2 + stage_index * 0.035 or enemy.dive > 0.0:
+				if beat_tick == null:
+					projectiles.fire_enemy(enemy, player_x, enemy_stats)
+				else:
+					enemy.armed = true
+		if beat_tick == true and enemy.get("armed", false):
+			enemy.armed = false
+			projectiles.fire_enemy(enemy, player_x, enemy_stats)
 
 
 func _midboss_is_resting(enemy: Dictionary, stage_timer: float) -> bool:
