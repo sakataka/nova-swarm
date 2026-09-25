@@ -277,7 +277,9 @@ func _best_attack_position(player: RefCounted, enemies: Array, boss: Dictionary)
 	for enemy in enemies:
 		var vertical_bias: float = maxf(0.0, player.y - enemy.y) * 0.08
 		var midboss_bonus := -90.0 if str(enemy.kind).begins_with("mid_") else 0.0
-		var score := absf(enemy.x - player.x) - vertical_bias + midboss_bonus
+		# Prefer network nodes whose destruction would chain into their neighbors.
+		var chain_bonus := -float(enemy.get("chain_value", 0)) * 55.0
+		var score := absf(enemy.x - player.x) - vertical_bias + midboss_bonus + chain_bonus
 		if score < best_score:
 			best_score = score
 			best = enemy

@@ -42,6 +42,8 @@ func load_stage(stage_data: Dictionary, enemy_stats: Dictionary, difficulty: flo
 				"y": y,
 				"base_x": x,
 				"base_y": y,
+				"row": row,
+				"col": col,
 				"hp": int(stats.hp) + wave_index / 2,
 				"max_hp": int(stats.hp) + wave_index / 2,
 				"t": randf() * 10.0,
@@ -141,6 +143,12 @@ func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: fl
 			enemy.x += swarm_dir * stage_data.speed * difficulty * dt
 			enemy.y = enemy.base_y + sin(stage_timer * 1.6 + enemy.id) * 9.0
 
+		if float(enemy.get("stun", 0.0)) > 0.0:
+			# Stunned by a network collapse: the reactor is offline and cannot fire.
+			enemy.stun = maxf(0.0, float(enemy.stun) - dt)
+			enemy.armed = false
+			enemy.shoot = maxf(float(enemy.shoot), 0.4)
+			continue
 		enemy.shoot -= dt
 		if enemy.shoot <= 0.0:
 			if is_midboss and _midboss_is_resting(enemy, stage_timer):

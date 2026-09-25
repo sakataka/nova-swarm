@@ -237,11 +237,13 @@ func _initialize() -> void:
 	_assert(scene.audio_manager.current_music_key == "stage_drive", "early stages use drive music")
 	scene._start_wave(int(Config.STAGES[0].waves) - 1)
 	var commander: Dictionary = scene.swarm.enemies.filter(func(enemy: Dictionary) -> bool: return enemy.kind == "commander")[0]
+	_assert(scene.network.links.any(func(link: Dictionary) -> bool: return link.kind == "hub"), "commander links into the fleet network as a hub")
 	scene.player.resonance = 0.0
 	var items_before_commander: int = scene.items.size()
 	scene._handle_commander_defeat(commander)
 	_assert(scene.player.resonance > 0.0, "commander defeat adds resonance")
 	_assert(scene.items.size() == items_before_commander + 1, "commander drops reward item")
+	_assert(scene.network.links.is_empty() and not scene.network.surges.is_empty(), "commander defeat collapses the network")
 	scene.swarm.enemies.clear()
 	scene._check_stage_end()
 	_assert(scene.stage_transition_timer > 0.0, "final wave clear schedules a seamless stage transition")
@@ -280,6 +282,29 @@ func _initialize() -> void:
 	_assert(dive_preview_right <= Config.W - 36.0, "dive preview clamps to right playfield")
 	scene.queue_redraw()
 	await process_frame
+
+	scene.load_stage(0)
+	_assert(scene.network.links.size() >= 20, "formation enemies are linked into a resonance network")
+	var node: Dictionary = scene.swarm.enemies.filter(func(enemy: Dictionary) -> bool: return int(enemy.get("row", -1)) == 0 and int(enemy.get("col", -1)) == 1)[0]
+	var neighbor_ids: Array = scene.network.neighbors(int(node.id), scene.network.index_enemies(scene.swarm.enemies)).map(func(enemy: Dictionary) -> int: return int(enemy.id))
+	_assert(neighbor_ids.size() == 3, "grid node links to its row and column neighbors")
+	var neighbor_hp_before := 0
+	for enemy in scene.swarm.enemies:
+		if neighbor_ids.has(int(enemy.id)):
+			neighbor_hp_before += int(enemy.hp)
+	scene.player.overdrive_timer = 0.0
+	scene.beat_clock.beat = 0.5
+	node.hp = 0
+	scene._on_enemy_shot_down(node)
+	_assert(scene.network.surges.size() == 3, "destroyed node sends a surge to each neighbor")
+	scene.score = 0
+	scene._update_network(0.2)
+	var neighbor_hp_after := 0
+	for enemy in scene.swarm.enemies:
+		if neighbor_ids.has(int(enemy.id)):
+			neighbor_hp_after += maxi(0, int(enemy.hp))
+	_assert(neighbor_hp_after < neighbor_hp_before, "surges damage linked neighbors")
+	_assert(scene.score > 0, "surge kills are scored")
 
 	var clock = scene.beat_clock
 	clock.reset("stage_drive")

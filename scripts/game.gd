@@ -12,6 +12,7 @@ const AiPilotScript := preload("res://scripts/ai_pilot.gd")
 const FxLayerScript := preload("res://scripts/fx_layer.gd")
 const UiLayerScript := preload("res://scripts/ui_layer.gd")
 const BeatClockScript := preload("res://scripts/beat_clock.gd")
+const ResonanceNetworkScript := preload("res://scripts/resonance_network.gd")
 
 enum GameState { TITLE, PLAYING, PAUSED, GAME_OVER, VICTORY }
 enum ControlMode { MANUAL, AI }
@@ -60,6 +61,8 @@ var boss_controller = BossControllerScript.new()
 var hud = HudScript.new()
 var ai_pilot = AiPilotScript.new()
 var beat_clock = BeatClockScript.new()
+var network = ResonanceNetworkScript.new()
+var best_chain := 0
 var _pending_beat_tick := false
 var _sync_popup_cooldown := 0.0
 var audio_manager
@@ -486,6 +489,7 @@ func reset() -> void:
 	wave_transition_timer = 0.0
 	stage_transition_timer = 0.0
 	stage_results.clear()
+	best_chain = 0
 	control_mode = selected_control_mode
 	ai_pilot.reset()
 	player.reset_run(Config.W / 2.0, Config.PLAYER_Y)
@@ -513,6 +517,7 @@ func load_stage(index: int) -> void:
 	if fx:
 		fx.clear()
 	swarm.clear()
+	network.clear()
 	boss_controller.clear()
 	player.start_stage(Config.W / 2.0, Config.PLAYER_Y)
 	_start_stage_metrics()
@@ -529,6 +534,7 @@ func load_stage(index: int) -> void:
 
 	audio_manager.play_music("stage_pressure" if index >= 2 else "stage_drive")
 	swarm.load_stage(st, Config.ENEMY_STATS, difficulty, stage_wave)
+	network.build(swarm.enemies)
 	_setup_stage_gimmicks()
 
 
@@ -538,6 +544,7 @@ func _start_wave(next_wave: int) -> void:
 	projectiles.clear_enemy_bullets()
 	var st: Dictionary = Config.STAGES[stage]
 	swarm.load_stage(st, Config.ENEMY_STATS, difficulty, stage_wave)
+	network.build(swarm.enemies)
 	stage_banner = 0.9
 	audio_manager.play_sfx("wave")
 
@@ -611,6 +618,7 @@ func _update_game(dt: float) -> void:
 	_sync_popup_cooldown = maxf(0.0, _sync_popup_cooldown - dt)
 	swarm.update(dt, st, stage, stage_timer, difficulty, player.x, projectiles, Config.ENEMY_STATS, beat_tick)
 	_track_enemy_motion(dt)
+	_update_network(dt)
 	if boss_controller.update(dt, projectiles, beat_tick):
 		audio_manager.play_sfx("boss")
 	projectiles.update(dt)
@@ -646,6 +654,71 @@ func _track_enemy_motion(dt: float) -> void:
 			enemy.trail = trail
 		elif enemy.has("trail"):
 			enemy.erase("trail")
+
+
+func _update_network(dt: float) -> void:
+	var by_id: Dictionary = ResonanceNetworkScript.index_enemies(swarm.enemies)
+	for surge in network.update(dt):
+		var target: Variant = by_id.get(int(surge.to_id))
+		if target == null or int(target.hp) <= 0:
+			continue
+		var target_pos := Vector2(target.x, target.y)
+		var damage := int(surge.power)
+		if str(target.kind).begins_with("mid_"):
+			damage = maxi(damage, int(float(target.max_hp) * 0.2))
+		target.hp -= damage
+		target.flash = 1.0
+		if surge.get("collapse", false):
+			target.stun = 1.6
+		if fx:
+			fx.bolt(surge.from, target_pos, Color(1.0, 0.62, 0.3), 0.24, 3.0)
+			fx.burst(target_pos, Color(1.0, 0.8, 0.5), 5, 160.0, 0.25)
+		if int(target.hp) <= 0:
+			_on_enemy_surged(target, surge, by_id)
+		else:
+			audio_manager.play_sfx("hit")
+	for enemy in swarm.enemies:
+		enemy.chain_value = network.chain_value(enemy, 1, by_id)
+
+
+# Surge power and reach grow on the beat and during Overdrive.
+func _emit_kill_surge(enemy: Dictionary) -> void:
+	var by_id: Dictionary = ResonanceNetworkScript.index_enemies(swarm.enemies)
+	var on_beat: bool = beat_clock.is_on_beat()
+	var overdrive: bool = player.is_overdrive_active()
+	var hops := 1 + (1 if on_beat else 0) + (2 if overdrive else 0)
+	var power := 2 if on_beat and overdrive else 1
+	var chain_id: int = network.start_chain(Vector2(enemy.x, enemy.y))
+	var sent: int = network.emit(enemy, power, hops, chain_id, by_id)
+	if sent > 0 and on_beat and fx:
+		fx.ring(Vector2(enemy.x, enemy.y), Color(1.0, 0.86, 0.45, 0.8), 110.0, 0.3, 3.0)
+
+
+func _on_enemy_surged(enemy: Dictionary, surge: Dictionary, by_id: Dictionary) -> void:
+	var chain_count: int = network.register_chain_kill(int(surge.chain_id))
+	best_chain = maxi(best_chain, chain_count)
+	var multiplier: float = player.register_kill() * (1.0 + 0.25 * float(chain_count - 1))
+	if player.is_overdrive_active():
+		multiplier *= 1.75
+	score += int(float(enemy.score) * multiplier)
+	player.add_resonance(2.0 + minf(6.0, float(chain_count)) * 0.5)
+	var is_midboss: bool = str(enemy.kind).begins_with("mid_")
+	var big: bool = enemy.kind in ["armor", "saucer", "commander"] or is_midboss
+	explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": big})
+	_spawn_death_fx(enemy, big)
+	if fx and chain_count >= 3:
+		var chain: Dictionary = network.chains.get(int(surge.chain_id), {})
+		var origin: Vector2 = chain.get("origin", Vector2(enemy.x, enemy.y))
+		fx.popup(origin + Vector2(0, -30), "CHAIN x" + str(chain_count), Color("#ffb46a") if chain_count < 6 else Color("#ffe27a"), 18 + mini(10, chain_count), 0.9)
+	if enemy.kind == "commander":
+		_handle_commander_defeat(enemy)
+	elif is_midboss:
+		_handle_midboss_defeat(enemy)
+	elif randf() < 0.5:
+		_maybe_drop_item(enemy, false)
+	network.emit(enemy, int(surge.power), int(surge.hops_left), int(surge.chain_id), by_id)
+	_add_shake(1.4)
+	audio_manager.play_sfx("boom")
 
 
 func _spawn_death_fx(enemy: Dictionary, big: bool) -> void:
@@ -1028,6 +1101,7 @@ func _on_enemy_shot_down(enemy: Dictionary) -> void:
 		_handle_midboss_defeat(enemy)
 	else:
 		_maybe_drop_item(enemy, false)
+	_emit_kill_surge(enemy)
 	if is_midboss:
 		_add_shake(4.5)
 		_add_flash(0.46, 0.055)
@@ -1189,12 +1263,12 @@ func _handle_commander_defeat(enemy: Dictionary) -> void:
 	_add_flash(0.42, 0.025)
 	for i in range(5):
 		explosions.append({"x": enemy.x + sin(float(i) * 1.7) * 54.0, "y": enemy.y + cos(float(i) * 1.3) * 42.0, "t": -float(i) * 0.025, "big": true})
-	for other in swarm.enemies:
-		if other.id == enemy.id or other.hp <= 0:
-			continue
-		if Vector2(other.x, other.y).distance_to(Vector2(enemy.x, enemy.y)) < 155.0:
-			other.hp -= 1
-			explosions.append({"x": other.x, "y": other.y, "t": 0.0, "big": false})
+	# Network collapse: the hub's destruction surges through every linked node and severs the fleet.
+	var by_id: Dictionary = ResonanceNetworkScript.index_enemies(swarm.enemies)
+	var chain_id: int = network.start_chain(Vector2(enemy.x, enemy.y))
+	if network.collapse(enemy, chain_id, by_id) > 0 and fx:
+		fx.popup(Vector2(enemy.x, enemy.y + 40.0), "NETWORK COLLAPSE", Color("#ffe27a"), 24, 1.2)
+		fx.ring(Vector2(enemy.x, enemy.y), Color(1.0, 0.75, 0.4, 0.9), 520.0, 0.8, 5.0, 40.0)
 	var kept_bullets: Array[Dictionary] = []
 	for bullet in projectiles.bullets:
 		if not bullet.enemy or Vector2(bullet.x, bullet.y).distance_to(Vector2(enemy.x, enemy.y)) > 185.0:
@@ -1305,6 +1379,7 @@ func _draw_playfield() -> void:
 	for hazard in stage_hazards:
 		_draw_stage_hazard(hazard)
 	_draw_threat_previews()
+	_draw_network_links()
 	for enemy in swarm.enemies:
 		_draw_enemy(enemy)
 	if boss_controller.is_alive():
@@ -1331,10 +1406,6 @@ func _draw_player() -> void:
 	if player_ship_texture:
 		var size := 92.0
 		var bank := clampf(player_velocity.x / 430.0, -1.0, 1.0)
-		if player.is_overdrive_active() and player_velocity.length() > 120.0:
-			for i in range(3):
-				var ghost_offset := -player_velocity * 0.028 * float(i + 1)
-				_draw_sprite_banked(player_ship_texture, Rect2(), Vector2(player.x, player.y) + ghost_offset, Vector2(size, size), bank * 0.16, Vector2(1.0 - absf(bank) * 0.12, 1.0), Color(0.5, 0.9, 1.0, 0.2 - float(i) * 0.05))
 		_draw_sprite_banked(player_ship_texture, Rect2(), Vector2(player.x, player.y), Vector2(size, size), bank * 0.16, Vector2(1.0 - absf(bank) * 0.12, 1.0), tint)
 	if player.shield > 0:
 		_draw_player_shield()
@@ -1410,6 +1481,10 @@ func _draw_renewal_enemy(enemy: Dictionary) -> void:
 	var center := Vector2(enemy.x, enemy.y)
 	var rotation := _enemy_rotation(enemy)
 	var tint := Color.WHITE
+	var stunned := float(enemy.get("stun", 0.0)) > 0.0
+	if stunned:
+		center += Vector2(fx.rng.randf_range(-2.0, 2.0), fx.rng.randf_range(-1.5, 1.5)) if fx else Vector2.ZERO
+		rotation += sin(stage_timer * 30.0 + float(enemy.id)) * 0.08
 	if enemy.max_hp > 1 and not is_midboss:
 		var hp_ratio := clampf(float(enemy.hp) / float(enemy.max_hp), 0.0, 1.0)
 		tint = Color(1.0, 0.72 + hp_ratio * 0.28, 0.7 + hp_ratio * 0.3, 1.0)
@@ -1423,6 +1498,8 @@ func _draw_renewal_enemy(enemy: Dictionary) -> void:
 		_c.draw_circle(center, draw_size * 0.48, Color(aura_color, 0.07))
 		_c.draw_arc(center, draw_size * 0.5, stage_timer * 0.8, stage_timer * 0.8 + TAU * 0.7, 44, Color(aura_color, 0.55), 2.0)
 		_c.draw_arc(center, draw_size * 0.56, -stage_timer * 1.1, -stage_timer * 1.1 + TAU * 0.35, 24, Color(aura_color, 0.35), 2.0)
+	if stunned:
+		tint = Color(0.62, 0.66, 0.78, 1.0)
 	_draw_sprite_banked(enemy_fleet_texture, region, center, Vector2.ONE * draw_size, rotation, Vector2(1.0 - absf(rotation) * 0.25, 1.0), tint)
 	if is_midboss:
 		var bar_width := 108.0
@@ -1463,6 +1540,7 @@ func draw_light_pass(canvas: Node2D) -> void:
 			var velocity := Vector2(bullet.vx, bullet.vy)
 			var length := clampf(velocity.length() * 0.07, 20.0, 64.0)
 			canvas.glow_stretched(pos + Vector2(0, length * 0.3), Color(color, 0.5), Vector2(float(bullet.r) * 5.0, length))
+	_draw_network_lights(canvas)
 	for enemy in swarm.enemies:
 		_draw_enemy_lights(canvas, enemy)
 	if boss_controller.is_alive() and boss_controller.boss.has("parts"):
@@ -1489,6 +1567,51 @@ func draw_light_pass(canvas: Node2D) -> void:
 		_draw_player_lights(canvas)
 
 
+func _link_color(link: Dictionary) -> Color:
+	match str(link.kind):
+		"hub":
+			return Color("#ffc46a")
+		"tether":
+			return Color("#ff7a5a")
+	return Color("#d98a4e")
+
+
+func _draw_network_links() -> void:
+	var by_id: Dictionary = ResonanceNetworkScript.index_enemies(swarm.enemies)
+	for link in network.active_links(by_id):
+		var a: Dictionary = by_id[int(link.a)]
+		var b: Dictionary = by_id[int(link.b)]
+		var width := 3.0 if link.kind != "grid" else 1.6
+		_c.draw_line(Vector2(a.x, a.y), Vector2(b.x, b.y), Color(0.08, 0.05, 0.04, 0.55), width + 2.0)
+		_c.draw_line(Vector2(a.x, a.y), Vector2(b.x, b.y), Color(_link_color(link), 0.34), width)
+
+
+func _draw_network_lights(canvas: Node2D) -> void:
+	var by_id: Dictionary = ResonanceNetworkScript.index_enemies(swarm.enemies)
+	var pulse: float = beat_clock.pulse(4.0)
+	var travel: float = beat_clock.phase()
+	for link in network.active_links(by_id):
+		var a: Dictionary = by_id[int(link.a)]
+		var b: Dictionary = by_id[int(link.b)]
+		var start := Vector2(a.x, a.y)
+		var end := Vector2(b.x, b.y)
+		var color := _link_color(link)
+		canvas.draw_line(start, end, Color(color, 0.1 + pulse * 0.32), 2.0 if link.kind == "grid" else 3.0, true)
+		# Energy packets travel along the links once per beat.
+		var packet := start.lerp(end, travel if (int(link.a) + int(link.b)) % 2 == 0 else 1.0 - travel)
+		canvas.glow(packet, Color(color, 0.35 + pulse * 0.3), 16.0 if link.kind == "grid" else 24.0)
+	for surge in network.surges:
+		var target: Variant = by_id.get(int(surge.to_id))
+		if target == null:
+			continue
+		var ratio := clampf(float(surge.t) / ResonanceNetworkScript.SURGE_HOP_TIME, 0.0, 1.0)
+		if float(surge.t) < 0.0:
+			continue
+		var head: Vector2 = Vector2(surge.from).lerp(Vector2(target.x, target.y), ratio)
+		canvas.draw_line(surge.from, head, Color(1.0, 0.75, 0.4, 0.8), 3.0, true)
+		canvas.glow(head, Color(1.0, 0.9, 0.6, 0.9), 34.0)
+
+
 func _draw_enemy_lights(canvas: Node2D, enemy: Dictionary) -> void:
 	var center := Vector2(enemy.x, enemy.y)
 	var draw_size := _enemy_draw_size(enemy)
@@ -1500,6 +1623,11 @@ func _draw_enemy_lights(canvas: Node2D, enemy: Dictionary) -> void:
 	var flame_len: float = draw_size * (0.55 if diving else 0.32) * (0.85 + fx.rng.randf() * 0.3)
 	var engine_pos := center + up * draw_size * 0.38
 	canvas.glow_stretched(engine_pos + up * flame_len * 0.35, Color(1.0, 0.5, 0.22, 0.8 if diving else 0.55), Vector2(draw_size * 0.32, flame_len))
+	if float(enemy.get("stun", 0.0)) > 0.0:
+		if fx.rng.randf() < 0.35:
+			var arc_end := center + Vector2(fx.rng.randf_range(-1.0, 1.0), fx.rng.randf_range(-1.0, 1.0)) * draw_size * 0.5
+			canvas.draw_line(center, arc_end, Color(0.6, 0.85, 1.0, 0.7), 1.5, true)
+		return
 	var core_pulse := 0.55 + sin(stage_timer * 4.0 + float(enemy.id)) * 0.2
 	canvas.glow(center, Color(base_color, (0.4 if is_midboss else 0.26) * core_pulse), draw_size * (1.3 if is_midboss else 0.95))
 	if enemy.get("armed", false):
@@ -2112,6 +2240,8 @@ func _damage_boss_part(point: Vector2, power: int) -> int:
 			_add_flash(0.34, 0.02)
 			for i in range(4):
 				explosions.append({"x": part_pos.x + randf_range(-24.0, 24.0), "y": part_pos.y + randf_range(-24.0, 24.0), "t": -float(i) * 0.025, "big": true})
+			if part.id != "core":
+				_overload_boss_core(part_pos)
 			if fx:
 				fx.shatter(part_pos, 18, 320.0, 1.8)
 				fx.ring(part_pos, Color(1.0, 0.7, 0.4, 0.9), 200.0, 0.5, 5.0)
@@ -2120,6 +2250,21 @@ func _damage_boss_part(point: Vector2, power: int) -> int:
 			return 8
 		return 2
 	return 0
+
+
+# A broken side reactor surges into the central core through the boss's own network.
+func _overload_boss_core(from: Vector2) -> void:
+	var b: Dictionary = boss_controller.boss
+	for part in b.parts:
+		if part.id != "core" or not part.alive:
+			continue
+		var core_pos: Vector2 = Vector2(b.x, b.y) + part.offset
+		part.hp = maxi(1, int(part.hp) - 60)
+		b.hp = maxi(1, int(b.hp) - 150)
+		if fx:
+			fx.bolt(from, core_pos, Color(1.0, 0.6, 0.3), 0.5, 5.0)
+			fx.bolt(from, core_pos, Color(1.0, 0.85, 0.5), 0.35, 3.0)
+			fx.popup(core_pos + Vector2(0, 40), "OVERLOAD", Color("#ffe27a"), 22, 1.0)
 
 
 func _load_png_texture(path: String) -> Texture2D:
