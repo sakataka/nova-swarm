@@ -9,6 +9,8 @@ const EnemySwarmScript := preload("res://scripts/enemy_swarm.gd")
 const BossControllerScript := preload("res://scripts/boss_controller.gd")
 const HudScript := preload("res://scripts/hud.gd")
 const AiPilotScript := preload("res://scripts/ai_pilot.gd")
+const FxLayerScript := preload("res://scripts/fx_layer.gd")
+const UiLayerScript := preload("res://scripts/ui_layer.gd")
 
 enum GameState { TITLE, PLAYING, PAUSED, GAME_OVER, VICTORY }
 enum ControlMode { MANUAL, AI }
@@ -86,10 +88,19 @@ var font: Font
 var display_font: Font
 var overdrive_aura: CPUParticles2D
 var overdrive_burst: CPUParticles2D
+var fx: Node2D
+var ui_layer: Node2D
+# Canvas used by the shared draw helpers: the world during _draw, the UI layer during draw_ui_pass.
+var _c: CanvasItem
+var _world_xform := Transform2D.IDENTITY
+var _prev_player_pos := Vector2.ZERO
+var player_velocity := Vector2.ZERO
+var warp := 0.0
 
 
 func _ready() -> void:
 	randomize()
+	_c = self
 	_setup_native_window()
 	_setup_runtime_models()
 	touch_controls_available = _detect_touch_controls_available()
@@ -118,6 +129,7 @@ func _ready() -> void:
 	add_child(audio_manager)
 	_setup_web_audio_lifecycle()
 	_setup_overdrive_particles()
+	_setup_render_layers()
 	audio_manager.play_music("title", 0.25)
 	_parse_web_query()
 	queue_redraw()
@@ -251,6 +263,15 @@ func _setup_overdrive_particles() -> void:
 	add_child(overdrive_burst)
 
 
+func _setup_render_layers() -> void:
+	fx = FxLayerScript.new()
+	fx.game = self
+	add_child(fx)
+	ui_layer = UiLayerScript.new()
+	ui_layer.game = self
+	add_child(ui_layer)
+
+
 func _setup_native_window() -> void:
 	if OS.get_name() == "Web":
 		return
@@ -269,12 +290,35 @@ func _process(delta: float) -> void:
 		hitstop = maxf(0.0, hitstop - dt)
 		_update_feedback(dt)
 		audio_manager.update_music(dt)
-		queue_redraw()
+		_update_visuals(dt * 0.25)
 		return
 	if state == GameState.PLAYING:
 		_update_game(dt)
 	_update_feedback(dt)
 	audio_manager.update_music(dt)
+	_update_visuals(dt)
+
+
+func _update_visuals(dt: float) -> void:
+	var player_pos := Vector2(player.x, player.y)
+	if dt > 0.0:
+		player_velocity = player_velocity.lerp((player_pos - _prev_player_pos) / dt, clampf(dt * 14.0, 0.0, 1.0))
+	_prev_player_pos = player_pos
+	var warp_target := 1.0 if stage_transition_timer > 0.0 else 0.0
+	warp = lerpf(warp, warp_target, clampf(dt * (5.0 if warp_target > warp else 2.2), 0.0, 1.0))
+	if fx:
+		if state == GameState.PLAYING:
+			fx.update(dt)
+		var shake := Vector2.ZERO
+		if screen_shake > 0.0:
+			shake = Vector2(fx.rng.randf_range(-screen_shake, screen_shake), fx.rng.randf_range(-screen_shake, screen_shake)).round()
+		var zoom_offset := Vector2(Config.W, Config.H) * 0.5 * (1.0 - overdrive_zoom)
+		_world_xform = Transform2D(0.0, Vector2(overdrive_zoom, overdrive_zoom), 0.0, shake + zoom_offset)
+		fx.transform = _world_xform
+		fx.visible = state in [GameState.PLAYING, GameState.PAUSED]
+		fx.queue_redraw()
+	if ui_layer:
+		ui_layer.queue_redraw()
 	queue_redraw()
 
 
@@ -459,6 +503,8 @@ func load_stage(index: int) -> void:
 	items.clear()
 	stage_hazards.clear()
 	score_crystals.clear()
+	if fx:
+		fx.clear()
 	swarm.clear()
 	boss_controller.clear()
 	player.start_stage(Config.W / 2.0, Config.PLAYER_Y)
@@ -554,6 +600,7 @@ func _update_game(dt: float) -> void:
 
 	var st: Dictionary = Config.STAGES[stage]
 	swarm.update(dt, st, stage, stage_timer, difficulty, player.x, projectiles, Config.ENEMY_STATS)
+	_track_enemy_motion(dt)
 	if boss_controller.update(dt, projectiles):
 		audio_manager.play_sfx("boss")
 	projectiles.update(dt)
@@ -564,6 +611,45 @@ func _update_game(dt: float) -> void:
 	_check_collisions()
 	_stage_max_combo = maxi(_stage_max_combo, player.combo)
 	_check_stage_end()
+
+
+func _track_enemy_motion(dt: float) -> void:
+	if dt <= 0.0:
+		return
+	for enemy in swarm.enemies:
+		var pos := Vector2(enemy.x, enemy.y)
+		var previous: Vector2 = enemy.get("prev_pos", pos)
+		var jump := pos.distance_to(previous) > 160.0
+		var velocity := Vector2.ZERO if jump else (pos - previous) / dt
+		enemy.vx = lerpf(float(enemy.get("vx", 0.0)), velocity.x, 0.25)
+		enemy.vy = lerpf(float(enemy.get("vy", 0.0)), velocity.y, 0.25)
+		enemy.prev_pos = pos
+		enemy.flash = maxf(0.0, float(enemy.get("flash", 0.0)) - dt * 7.0)
+		if float(enemy.get("dive", 0.0)) > 0.0 and not jump:
+			var trail: Array = enemy.get("trail", [])
+			enemy.trail_t = float(enemy.get("trail_t", 0.0)) + dt
+			if enemy.trail_t >= 0.045:
+				enemy.trail_t = 0.0
+				trail.append(pos)
+				if trail.size() > 4:
+					trail.pop_front()
+			enemy.trail = trail
+		elif enemy.has("trail"):
+			enemy.erase("trail")
+
+
+func _spawn_death_fx(enemy: Dictionary, big: bool) -> void:
+	if not fx:
+		return
+	var pos := Vector2(enemy.x, enemy.y)
+	var color: Color = Config.ENEMY_STATS.get(enemy.kind, {"color": Config.UI_AMBER}).color
+	var scale := 1.8 if str(enemy.kind).begins_with("mid_") else 1.3 if big else 1.0
+	fx.shatter(pos, int(8 * scale), 210.0 * scale, scale)
+	fx.burst(pos, Color(1.0, 0.75, 0.4), int(14 * scale), 340.0 * scale, 0.45)
+	fx.ring(pos, Color(1.0, 0.6, 0.3, 0.8), 70.0 * scale, 0.32)
+	fx.flash_glow(pos, Color(1.0, 0.8, 0.5, 0.9), 160.0 * scale, 0.24)
+	if scale > 1.5:
+		fx.ring(pos, Color(1.0, 0.95, 0.8, 0.6), 190.0, 0.55, 4.0)
 
 
 func _update_overdrive_feedback() -> void:
@@ -622,6 +708,10 @@ func _start_overdrive() -> void:
 	audio_manager.play_sfx("overdrive")
 	_add_shake(4.0)
 	_add_flash(0.58, 0.025)
+	if fx:
+		fx.ring(Vector2(player.x, player.y), Color(0.55, 0.95, 1.0, 0.95), 320.0, 0.55, 6.0, 40.0)
+		fx.ring(Vector2(player.x, player.y), Color(1.0, 0.92, 0.6, 0.7), 200.0, 0.4, 3.0, 20.0)
+		fx.flash_glow(Vector2(player.x, player.y), Color(0.6, 0.95, 1.0, 0.8), 380.0, 0.35)
 	if overdrive_burst:
 		overdrive_burst.global_position = Vector2(player.x, player.y)
 		overdrive_burst.restart()
@@ -640,6 +730,8 @@ func _use_bomb() -> void:
 	hitstop = 0.025
 	var blast := {"x": player.x, "y": player.y - 54.0, "t": 0.0, "width": 172.0}
 	bomb_waves.append(blast)
+	if fx:
+		fx.ring(Vector2(player.x, player.y - 40.0), Color(0.6, 0.95, 1.0, 0.9), 260.0, 0.5, 5.0, 30.0)
 	var bomb_kills := 0
 
 	var kept_bullets: Array[Dictionary] = []
@@ -653,6 +745,7 @@ func _use_bomb() -> void:
 			enemy.hp = 0
 			bomb_kills += 1
 			explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer", "mid_lancer", "mid_orbit", "mid_anchor"]})
+			_spawn_death_fx(enemy, enemy.kind in ["armor", "saucer"])
 			score += int(enemy.score * 0.6)
 			if enemy.kind == "commander":
 				_handle_commander_defeat(enemy)
@@ -703,14 +796,19 @@ func _check_rock_collisions() -> void:
 				break
 			if Vector2(bullet.x, bullet.y).distance_to(Vector2(hazard.x, hazard.y)) >= float(hazard.r) + bullet.r:
 				continue
+			var impact := Vector2(bullet.x, bullet.y)
 			bullet.y = -999.0 if not bullet.enemy else Config.H + 999.0
 			if not bullet.enemy:
 				hazard.hp -= bullet.power
 				score += 20
-				explosions.append({"x": bullet.x, "y": bullet.y, "t": 0.0, "big": false})
+				if fx:
+					fx.directional_sparks(impact, Vector2(0, 1), Color(1.0, 0.75, 0.45), 3, 220.0)
+				explosions.append({"x": impact.x, "y": impact.y, "t": 0.0, "big": false})
 		if hazard.hp <= 0:
 			score += 320
 			explosions.append({"x": hazard.x, "y": hazard.y, "t": 0.0, "big": true})
+			if fx:
+				fx.shatter(Vector2(hazard.x, hazard.y), 14, 240.0, 1.4)
 			if randf() < 0.34:
 				items.append({"kind": "shield", "x": hazard.x, "y": hazard.y, "vy": 78.0, "t": 0.0})
 			continue
@@ -742,6 +840,8 @@ func _convert_overdrive_bullets(dt: float) -> void:
 	for bullet in projectiles.bullets:
 		if bullet.enemy and Vector2(bullet.x, bullet.y).distance_to(Vector2(player.x, player.y)) < radius:
 			converted += 1
+			if fx:
+				fx.flash_glow(Vector2(bullet.x, bullet.y), Color(0.6, 1.0, 1.0, 0.8), 44.0, 0.2)
 			score_crystals.append({"x": bullet.x, "y": bullet.y, "vx": randf_range(-38.0, 38.0), "vy": -90.0 - randf() * 40.0, "value": 95, "t": 0.0})
 		else:
 			kept.append(bullet)
@@ -812,49 +912,31 @@ func _check_collisions() -> void:
 			if enemy.hp <= 0:
 				continue
 			if _distance(bullet, enemy) < enemy.size * 0.62 + bullet.r:
+				var impact := Vector2(bullet.x, bullet.y)
 				bullet.y = -999.0
 				enemy.hp -= bullet.power
+				enemy.flash = 1.0
 				if enemy.hp <= 0:
-					var multiplier: float = player.register_kill()
-					var close_bonus := maxf(0.0, 1.0 - Vector2(enemy.x, enemy.y).distance_to(Vector2(player.x, player.y)) / 180.0)
-					player.add_resonance(3.0 + minf(10.0, float(player.combo)) * 0.55 + close_bonus * 6.0)
-					if player.close_kill_extend and player.is_overdrive_active() and close_bonus > 0.25:
-						player.overdrive_timer = minf(player.get_overdrive_duration() + 2.0, player.overdrive_timer + 0.18 + close_bonus * 0.18)
-					if player.is_overdrive_active():
-						multiplier *= 1.75
-					if close_bonus > 0.45:
-						multiplier *= 1.12
-					score += int(enemy.score * multiplier)
-					var is_midboss: bool = enemy.kind in ["mid_lancer", "mid_orbit", "mid_anchor"]
-					explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer", "commander"] or is_midboss})
-					if enemy.kind == "commander":
-						_handle_commander_defeat(enemy)
-					elif is_midboss:
-						_handle_midboss_defeat(enemy)
-					else:
-						_maybe_drop_item(enemy, false)
-					if is_midboss:
-						_add_shake(4.5)
-						_add_flash(0.46, 0.055)
-						audio_manager.play_sfx("midboss_break")
-					else:
-						_add_shake(1.8)
-						hitstop = maxf(hitstop, 0.025)
-						audio_manager.play_sfx("boom")
+					_on_enemy_shot_down(enemy)
 				else:
 					if enemy.kind in ["armor", "commander", "mid_lancer", "mid_orbit", "mid_anchor"]:
 						hitstop = maxf(hitstop, 0.012)
+					if fx:
+						fx.directional_sparks(impact + Vector2(0, 6.0), Vector2(0, 1), Color(1.0, 0.78, 0.45), 4, 280.0)
 					audio_manager.play_sfx("hit")
 				break
 
 		if bullet.y > -900.0 and boss_controller.is_alive() and _boss_hit_test(Vector2(bullet.x, bullet.y), bullet.r):
+			var impact := Vector2(bullet.x, bullet.y)
 			bullet.y = -999.0
-			var weak_bonus := _damage_boss_part(Vector2(bullet.x, bullet.y), bullet.power)
+			var weak_bonus := _damage_boss_part(impact, bullet.power)
 			boss_controller.boss.hp -= bullet.power + weak_bonus
 			player.add_resonance(1.4 + float(bullet.power) * 0.65)
 			var boss_score: int = 8 + min(player.combo, 20) + weak_bonus * 14
 			score += int(boss_score * (2.0 if player.is_overdrive_active() else 1.0))
-			explosions.append({"x": bullet.x, "y": bullet.y + 20.0, "t": 0.0, "big": false})
+			explosions.append({"x": impact.x, "y": impact.y + 20.0, "t": 0.0, "big": false})
+			if fx:
+				fx.directional_sparks(impact + Vector2(0, 12.0), Vector2(0, 1), Color(1.0, 0.7, 0.4), 3 + weak_bonus, 300.0)
 			audio_manager.play_sfx("hit")
 
 	swarm.remove_dead()
@@ -870,6 +952,8 @@ func _check_collisions() -> void:
 			var distance := _distance(bullet, player_pos)
 			if distance >= 27.0 + bullet.r and distance < 58.0 + bullet.r:
 				bullet.grazed = true
+				if fx:
+					fx.burst(Vector2(bullet.x, bullet.y), Color(0.55, 0.95, 1.0), 4, 150.0, 0.22, 1.4)
 				player.add_resonance(7.5)
 				score += 25 if player.is_overdrive_active() else 5
 				if player.graze_chain_bonus:
@@ -891,10 +975,47 @@ func _check_collisions() -> void:
 				player.apply_item(item.kind)
 			item.y = Config.H + 999.0
 			score += 300 if leveled_up else 120
+			if fx:
+				var pickup_color: Color = Config.CHIP_TRACKS[item.kind].color if Config.CHIP_TRACKS.has(item.kind) else Config.UI_GREEN
+				fx.ring(Vector2(player.x, player.y), pickup_color, 120.0 if leveled_up else 64.0, 0.34, 3.0, 20.0)
+				fx.burst(Vector2(item.x, item.y), pickup_color, 10 if leveled_up else 5, 220.0, 0.32)
+				if leveled_up:
+					fx.popup(Vector2(player.x, player.y - 70.0), str(Config.CHIP_TRACKS[item.kind].name) + " LV" + str(player.chip_levels[item.kind]), pickup_color, 20, 1.1)
 			flash = maxf(flash, 0.25 if leveled_up else 0.12)
 			_add_shake(2.2 if leveled_up else 0.5)
 			audio_manager.play_sfx("level_up" if leveled_up else "chip")
 	items = items.filter(func(item: Dictionary) -> bool: return item.y < Config.H + 100.0)
+
+
+func _on_enemy_shot_down(enemy: Dictionary) -> void:
+	var multiplier: float = player.register_kill()
+	var close_bonus := maxf(0.0, 1.0 - Vector2(enemy.x, enemy.y).distance_to(Vector2(player.x, player.y)) / 180.0)
+	player.add_resonance(3.0 + minf(10.0, float(player.combo)) * 0.55 + close_bonus * 6.0)
+	if player.close_kill_extend and player.is_overdrive_active() and close_bonus > 0.25:
+		player.overdrive_timer = minf(player.get_overdrive_duration() + 2.0, player.overdrive_timer + 0.18 + close_bonus * 0.18)
+	if player.is_overdrive_active():
+		multiplier *= 1.75
+	if close_bonus > 0.45:
+		multiplier *= 1.12
+	score += int(enemy.score * multiplier)
+	var is_midboss: bool = enemy.kind in ["mid_lancer", "mid_orbit", "mid_anchor"]
+	var big: bool = enemy.kind in ["armor", "saucer", "commander"] or is_midboss
+	explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": big})
+	_spawn_death_fx(enemy, big)
+	if enemy.kind == "commander":
+		_handle_commander_defeat(enemy)
+	elif is_midboss:
+		_handle_midboss_defeat(enemy)
+	else:
+		_maybe_drop_item(enemy, false)
+	if is_midboss:
+		_add_shake(4.5)
+		_add_flash(0.46, 0.055)
+		audio_manager.play_sfx("midboss_break")
+	else:
+		_add_shake(1.8)
+		hitstop = maxf(hitstop, 0.025)
+		audio_manager.play_sfx("boom")
 
 
 func _hurt() -> void:
@@ -902,6 +1023,9 @@ func _hurt() -> void:
 	var shield_absorb: bool = player.shield > 0
 	var dead: bool = player.hurt()
 	explosions.append({"x": player.x, "y": player.y, "t": 0.0, "big": true})
+	if fx:
+		fx.ring(Vector2(player.x, player.y), Color(0.7, 0.95, 1.0, 0.9), 240.0, 0.45, 5.0, 30.0)
+		fx.burst(Vector2(player.x, player.y), Color(0.7, 0.95, 1.0), 24, 420.0, 0.5, 2.2)
 	if shield_absorb and player.shield_retaliate:
 		_trigger_shield_burst()
 	projectiles.clear_enemy_bullets()
@@ -1084,20 +1208,25 @@ func _add_flash(amount: float, hitstop_time: float) -> void:
 
 
 func _draw() -> void:
+	_c = self
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_rect(Rect2(0, 0, Config.W, Config.H), Color("#02040c"))
-	var shake := Vector2.ZERO
-	if screen_shake > 0.0:
-		shake = Vector2(randf_range(-screen_shake, screen_shake), randf_range(-screen_shake, screen_shake)).round()
-	var zoom_offset := Vector2(Config.W, Config.H) * 0.5 * (1.0 - overdrive_zoom)
-	draw_set_transform(shake + zoom_offset, 0.0, Vector2(overdrive_zoom, overdrive_zoom))
+	if state == GameState.TITLE:
+		return
+	draw_set_transform_matrix(_world_xform)
 	_draw_background()
 	_draw_playfield()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func draw_ui_pass(canvas: CanvasItem) -> void:
+	_c = canvas
+	if fx and state in [GameState.PLAYING, GameState.PAUSED]:
+		fx.draw_popups(canvas, display_font if display_font else font, _world_xform)
 	if state in [GameState.PLAYING, GameState.PAUSED]:
-		hud.draw_hud(self, font, display_font, score, stage, stage_wave, int(Config.STAGES[stage].get("waves", 1)), player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), player.chip_levels, player.chip_progress, audio_manager.muted, hud_chassis_texture, status_icons_texture)
+		hud.draw_hud(_c, font, display_font, score, stage, stage_wave, int(Config.STAGES[stage].get("waves", 1)), player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), player.chip_levels, player.chip_progress, audio_manager.muted, hud_chassis_texture, status_icons_texture)
 	if flash > 0.0:
-		draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.34))
+		_c.draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.34))
 	if stage_banner > 0.0 and state == GameState.PLAYING:
 		var alpha := minf(1.0, stage_banner)
 		_draw_stage_banner(Config.STAGES[stage].name, Config.HUD + 118.0, alpha)
@@ -1105,28 +1234,49 @@ func _draw() -> void:
 		_draw_overlay()
 	if _should_draw_touch_controls():
 		_draw_touch_controls()
+	_c = self
 
 
 func _draw_background() -> void:
 	var st: Dictionary = Config.STAGES[stage]
+	var tint: Color = st.tint
 	if background_texture:
 		var cell_width := float(background_texture.get_width()) / 2.0
 		var cell_height := float(background_texture.get_height()) / 3.0
-		var crop_height := cell_width * Config.PLAY_H / Config.W
-		var crop_width := cell_width
-		var source_x := float(stage % 2) * cell_width + (cell_width - crop_width) * 0.5
-		var source_y := float(stage / 2) * cell_height + (cell_height - crop_height) * 0.5
+		# Crop inside the cell so the plate can drift with the player for parallax depth.
+		var crop_width := cell_width * 0.9
+		var crop_height := crop_width * Config.PLAY_H / Config.W
+		var spare := Vector2(cell_width - crop_width, cell_height - crop_height)
+		var sway_x := clampf((player.x - Config.W * 0.5) / (Config.W * 0.5), -1.0, 1.0) * 0.4
+		var drift_y := sin(stage_timer * 0.07) * 0.5
+		var source_x := float(stage % 2) * cell_width + spare.x * (0.5 + sway_x)
+		var source_y := float(stage / 2) * cell_height + spare.y * (0.5 + drift_y)
 		var panel := Rect2(source_x, source_y, crop_width, crop_height)
-		draw_texture_rect_region(background_texture, Rect2(0, Config.HUD, Config.W, Config.PLAY_H), panel, Color(1, 1, 1, 0.88))
+		_c.draw_texture_rect_region(background_texture, Rect2(0, Config.HUD, Config.W, Config.PLAY_H), panel, Color.WHITE)
 	else:
-		draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color("#081323"))
-	draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(0, 0, 0, 0.34))
-	var star_count := int(65.0 * st.stars)
-	for i in range(star_count):
-		var x := fmod(i * 149.0 + stage_timer * (12.0 + i % 4) * st.scroll, Config.W)
-		var y: float = Config.HUD + fmod(i * 61.0 + stage_timer * (35.0 + i % 5) * st.scroll, Config.PLAY_H)
-		var size := 2.0 if i % 7 == 0 else 1.0
-		draw_rect(Rect2(x, y, size, size), Color("#bdfbff") if i % 7 == 0 else Color(1, 1, 1, 0.55))
+		_c.draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color("#081323"))
+	_c.draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(0, 0, 0, 0.16))
+	# Three star layers: far dust, mid stars and near streaks that stretch into a warp between stages.
+	var speed_scale: float = st.scroll * (1.0 + warp * 9.0)
+	var layers := [
+		{"count": 70, "speed": 10.0, "size": 1.0, "alpha": 0.35, "streak": 0.0},
+		{"count": 38, "speed": 42.0, "size": 1.5, "alpha": 0.6, "streak": 0.02},
+		{"count": 14, "speed": 150.0, "size": 2.0, "alpha": 0.8, "streak": 0.06},
+	]
+	var sway: float = player.x - Config.W * 0.5
+	for layer_index in range(layers.size()):
+		var layer: Dictionary = layers[layer_index]
+		var count := int(float(layer.count) * st.stars)
+		for i in range(count):
+			var seed_x := fmod(float(i) * 149.3 + float(layer_index) * 311.0, Config.W)
+			var x := fposmod(seed_x - sway * float(layer_index + 1) * 0.025, Config.W)
+			var y: float = Config.HUD + fposmod(float(i) * 61.7 + float(layer_index) * 97.0 + stage_timer * float(layer.speed) * speed_scale, Config.PLAY_H)
+			var streak: float = (float(layer.streak) + warp * 0.9) * float(layer.speed) * speed_scale
+			var color := Color(tint, float(layer.alpha)) if i % 5 == 0 else Color(1, 1, 1, float(layer.alpha))
+			if streak > 1.5:
+				_c.draw_line(Vector2(x, y - streak), Vector2(x, y), color, float(layer.size))
+			else:
+				_c.draw_rect(Rect2(x, y, float(layer.size), float(layer.size)), color)
 
 
 func _draw_playfield() -> void:
@@ -1146,6 +1296,8 @@ func _draw_playfield() -> void:
 	for crystal in score_crystals:
 		_draw_score_crystal(crystal)
 	_draw_player()
+	if fx:
+		fx.draw_debris(_c)
 	for explosion in explosions:
 		_draw_explosion(explosion)
 
@@ -1156,12 +1308,28 @@ func _draw_player() -> void:
 		_draw_resonance_pods()
 	if player_ship_texture:
 		var size := 92.0
-		draw_texture_rect(player_ship_texture, Rect2(player.x - size * 0.5, player.y - size * 0.5, size, size), false, tint)
+		var bank := clampf(player_velocity.x / 430.0, -1.0, 1.0)
+		if player.is_overdrive_active() and player_velocity.length() > 120.0:
+			for i in range(3):
+				var ghost_offset := -player_velocity * 0.028 * float(i + 1)
+				_draw_sprite_banked(player_ship_texture, Rect2(), Vector2(player.x, player.y) + ghost_offset, Vector2(size, size), bank * 0.16, Vector2(1.0 - absf(bank) * 0.12, 1.0), Color(0.5, 0.9, 1.0, 0.2 - float(i) * 0.05))
+		_draw_sprite_banked(player_ship_texture, Rect2(), Vector2(player.x, player.y), Vector2(size, size), bank * 0.16, Vector2(1.0 - absf(bank) * 0.12, 1.0), tint)
 	if player.shield > 0:
 		_draw_player_shield()
 	# The cockpit marks the unchanged collision center even during Overdrive.
-	draw_circle(Vector2(player.x, player.y), 3.0, Color.WHITE)
-	draw_arc(Vector2(player.x, player.y), 4.5, 0.0, TAU, 16, Config.UI_CYAN, 1.0)
+	_c.draw_circle(Vector2(player.x, player.y), 3.0, Color.WHITE)
+	_c.draw_arc(Vector2(player.x, player.y), 4.5, 0.0, TAU, 16, Config.UI_CYAN, 1.0)
+
+
+# Draws a sprite rotated/squashed around its center while keeping the world transform.
+func _draw_sprite_banked(texture: Texture2D, region: Rect2, center: Vector2, size: Vector2, rotation: float, squash: Vector2, tint: Color) -> void:
+	_c.draw_set_transform_matrix(_world_xform * Transform2D(rotation, squash, 0.0, center))
+	var rect := Rect2(-size * 0.5, size)
+	if region.has_area():
+		_c.draw_texture_rect_region(texture, rect, region, tint)
+	else:
+		_c.draw_texture_rect(texture, rect, false, tint)
+	_c.draw_set_transform_matrix(_world_xform)
 
 
 func _draw_resonance_pods() -> void:
@@ -1170,8 +1338,8 @@ func _draw_resonance_pods() -> void:
 	for side in [-1.0, 1.0]:
 		var position := Vector2(player.x + side * (56.0 + sin(stage_timer * 2.4) * 4.0), player.y - 14.0 + cos(stage_timer * 2.4) * 5.0)
 		var origin := Vector2(player.x + side * 23.0, player.y + 5.0)
-		draw_line(origin, position, Color(Config.UI_CYAN, 0.2), 1.0)
-		draw_texture_rect(resonance_pod_texture, Rect2(position - Vector2(15, 19), Vector2(30, 38)), false)
+		_c.draw_line(origin, position, Color(Config.UI_CYAN, 0.2), 1.0)
+		_c.draw_texture_rect(resonance_pod_texture, Rect2(position - Vector2(15, 19), Vector2(30, 38)), false)
 
 
 func _draw_player_shield() -> void:
@@ -1182,7 +1350,7 @@ func _draw_player_shield() -> void:
 	var region := Rect2(float(frame % 2) * cell, float(frame / 2) * cell, cell, cell)
 	var size := 118.0 + float(clampi(player.shield, 1, 2) - 1) * 8.0
 	var tint := Color(1, 1, 1, 0.48 if player.shield == 1 else 0.7)
-	draw_texture_rect_region(shield_fx_texture, Rect2(player.x - size * 0.5, player.y - size * 0.5, size, size), region, tint)
+	_c.draw_texture_rect_region(shield_fx_texture, Rect2(player.x - size * 0.5, player.y - size * 0.5, size, size), region, tint)
 
 
 func _draw_enemy(enemy: Dictionary) -> void:
@@ -1190,28 +1358,143 @@ func _draw_enemy(enemy: Dictionary) -> void:
 		_draw_renewal_enemy(enemy)
 
 
-func _draw_renewal_enemy(enemy: Dictionary) -> void:
+func _enemy_region(enemy: Dictionary) -> Rect2:
 	var order := ["bug", "diver", "zig", "armor", "saucer", "commander", "mid_lancer", "mid_orbit", "mid_anchor"]
 	var index := order.find(str(enemy.kind))
 	var cell := float(enemy_fleet_texture.get_width()) / 3.0
-	var region := Rect2(float(index % 3) * cell, float(index / 3) * cell, cell, cell)
-	var is_midboss: bool = enemy.kind in ["mid_lancer", "mid_orbit", "mid_anchor"]
-	var draw_size := float(enemy.size) * (1.92 if is_midboss else 1.74)
+	return Rect2(float(index % 3) * cell, float(index / 3) * cell, cell, cell)
+
+
+func _enemy_draw_size(enemy: Dictionary) -> float:
+	var is_midboss: bool = str(enemy.kind).begins_with("mid_")
 	var pulse := 1.0 + sin(stage_timer * 5.0 + float(enemy.id)) * (0.025 if is_midboss else 0.012)
+	return float(enemy.size) * (1.92 if is_midboss else 1.74) * pulse
+
+
+func _enemy_rotation(enemy: Dictionary) -> float:
+	var velocity := Vector2(float(enemy.get("vx", 0.0)), float(enemy.get("vy", 0.0)))
+	if float(enemy.get("dive", 0.0)) > 0.0 and velocity.length() > 30.0:
+		# Sprites face down; lean the nose into the dive direction.
+		return clampf(-atan2(velocity.x, velocity.y), -0.7, 0.7)
+	return clampf(-velocity.x / 260.0, -0.22, 0.22)
+
+
+func _draw_renewal_enemy(enemy: Dictionary) -> void:
+	var region := _enemy_region(enemy)
+	var is_midboss: bool = str(enemy.kind).begins_with("mid_")
+	var draw_size := _enemy_draw_size(enemy)
+	var center := Vector2(enemy.x, enemy.y)
+	var rotation := _enemy_rotation(enemy)
 	var tint := Color.WHITE
 	if enemy.max_hp > 1 and not is_midboss:
 		var hp_ratio := clampf(float(enemy.hp) / float(enemy.max_hp), 0.0, 1.0)
-		tint = Color(1.0, 0.78 + hp_ratio * 0.22, 0.78 + hp_ratio * 0.22, 1.0)
+		tint = Color(1.0, 0.72 + hp_ratio * 0.28, 0.7 + hp_ratio * 0.3, 1.0)
+	if enemy.has("trail"):
+		var trail: Array = enemy.trail
+		for t_index in range(trail.size()):
+			var ghost_alpha := 0.07 + 0.2 * float(t_index) / float(maxi(1, trail.size()))
+			_draw_sprite_banked(enemy_fleet_texture, region, trail[t_index], Vector2.ONE * draw_size * 0.96, rotation, Vector2.ONE, Color(1.0, 0.55, 0.3, ghost_alpha))
 	if is_midboss:
 		var aura_color: Color = Config.ENEMY_STATS[enemy.kind].color
-		draw_circle(Vector2(enemy.x, enemy.y), draw_size * 0.48, Color(aura_color, 0.08))
-		draw_arc(Vector2(enemy.x, enemy.y), draw_size * 0.5, 0.0, TAU, 44, Color(aura_color, 0.5), 3.0)
-	draw_texture_rect_region(enemy_fleet_texture, Rect2(enemy.x - draw_size * pulse * 0.5, enemy.y - draw_size * pulse * 0.5, draw_size * pulse, draw_size * pulse), region, tint)
-	if enemy.max_hp > 2:
-		var bar_width := 116.0 if is_midboss else 74.0
+		_c.draw_circle(center, draw_size * 0.48, Color(aura_color, 0.07))
+		_c.draw_arc(center, draw_size * 0.5, stage_timer * 0.8, stage_timer * 0.8 + TAU * 0.7, 44, Color(aura_color, 0.55), 2.0)
+		_c.draw_arc(center, draw_size * 0.56, -stage_timer * 1.1, -stage_timer * 1.1 + TAU * 0.35, 24, Color(aura_color, 0.35), 2.0)
+	_draw_sprite_banked(enemy_fleet_texture, region, center, Vector2.ONE * draw_size, rotation, Vector2(1.0 - absf(rotation) * 0.25, 1.0), tint)
+	if is_midboss:
+		var bar_width := 108.0
 		var hp_ratio := clampf(float(enemy.hp) / maxf(1.0, float(enemy.max_hp)), 0.0, 1.0)
-		draw_rect(Rect2(enemy.x - bar_width * 0.5, enemy.y + draw_size * 0.48, bar_width, 5.0), Color(1, 1, 1, 0.13))
-		draw_rect(Rect2(enemy.x - bar_width * 0.5, enemy.y + draw_size * 0.48, bar_width * hp_ratio, 5.0), Config.ENEMY_STATS[enemy.kind].color)
+		var bar_y: float = enemy.y + draw_size * 0.5
+		_c.draw_rect(Rect2(enemy.x - bar_width * 0.5, bar_y, bar_width, 3.0), Color(1, 1, 1, 0.12))
+		_c.draw_rect(Rect2(enemy.x - bar_width * 0.5, bar_y, bar_width * hp_ratio, 3.0), Config.ENEMY_STATS[enemy.kind].color)
+
+
+# Additive pass rendered by FxLayer on top of the world (under the HUD).
+func draw_light_pass(canvas: Node2D) -> void:
+	var st: Dictionary = Config.STAGES[stage]
+	var tint: Color = st.tint
+	for i in range(4):
+		var nebula_pos := Vector2(fposmod(float(i) * 263.0 + stage_timer * 6.0, Config.W + 400.0) - 200.0, Config.HUD + 90.0 + float(i) * 150.0 + sin(stage_timer * 0.2 + float(i)) * 40.0)
+		canvas.glow(nebula_pos, Color(tint, 0.05), 520.0)
+	for bullet in projectiles.bullets:
+		var pos := Vector2(bullet.x, bullet.y)
+		var color: Color = bullet.color
+		if bullet.enemy:
+			var visual := str(bullet.get("sprite", "enemy"))
+			if visual == "beam":
+				canvas.glow_stretched(pos, Color(1.0, 0.3, 0.15, 0.55), Vector2(110.0, 190.0))
+				continue
+			var pulse := 0.8 + sin(stage_timer * 18.0 + pos.x * 0.05) * 0.2
+			canvas.glow(pos, Color(color, 0.85 * pulse), float(bullet.r) * 8.0)
+			canvas.glow(pos, Color(1, 1, 1, 0.35), float(bullet.r) * 2.6)
+		else:
+			var velocity := Vector2(bullet.vx, bullet.vy)
+			var length := clampf(velocity.length() * 0.07, 20.0, 64.0)
+			canvas.glow_stretched(pos + Vector2(0, length * 0.3), Color(color, 0.5), Vector2(float(bullet.r) * 5.0, length))
+	for enemy in swarm.enemies:
+		_draw_enemy_lights(canvas, enemy)
+	if boss_controller.is_alive() and boss_controller.boss.has("parts"):
+		for part in boss_controller.boss.parts:
+			if not part.alive:
+				continue
+			var part_pos: Vector2 = Vector2(boss_controller.boss.x, boss_controller.boss.y) + part.offset
+			var core_pulse := 0.6 + sin(stage_timer * 6.0 + part_pos.x) * 0.25
+			canvas.glow(part_pos, Color(1.0, 0.35, 0.2, 0.75 * core_pulse), 170.0)
+		for engine_x in [-62.0, 62.0]:
+			var engine := Vector2(boss_controller.boss.x + engine_x, boss_controller.boss.y - 150.0)
+			canvas.glow_stretched(engine + Vector2(0, -20), Color(1.0, 0.45, 0.2, 0.4 + fx.rng.randf() * 0.15), Vector2(34.0, 90.0))
+	for item in items:
+		var item_color := Config.UI_GREEN
+		if Config.CHIP_TRACKS.has(item.kind):
+			item_color = Config.CHIP_TRACKS[item.kind].color
+		canvas.glow(Vector2(item.x, item.y), Color(item_color, 0.32 + sin(item.t * 7.0) * 0.08), 96.0)
+	for crystal in score_crystals:
+		canvas.glow(Vector2(crystal.x, crystal.y), Color(0.45, 0.95, 1.0, 0.4), 46.0)
+	for wave in bomb_waves:
+		var progress := clampf(wave.t / 0.62, 0.0, 1.0)
+		canvas.glow_stretched(Vector2(wave.x, (Config.HUD + player.y) * 0.5), Color(0.5, 0.95, 1.0, 0.5 * (1.0 - progress)), Vector2(wave.width * 1.6, player.y - Config.HUD))
+	if state == GameState.PLAYING or state == GameState.PAUSED:
+		_draw_player_lights(canvas)
+
+
+func _draw_enemy_lights(canvas: Node2D, enemy: Dictionary) -> void:
+	var center := Vector2(enemy.x, enemy.y)
+	var draw_size := _enemy_draw_size(enemy)
+	var rotation := _enemy_rotation(enemy)
+	var is_midboss: bool = str(enemy.kind).begins_with("mid_")
+	var base_color: Color = Config.ENEMY_STATS[enemy.kind].color
+	var up := Vector2(0, -1).rotated(rotation)
+	var diving: bool = float(enemy.get("dive", 0.0)) > 0.0
+	var flame_len: float = draw_size * (0.55 if diving else 0.32) * (0.85 + fx.rng.randf() * 0.3)
+	var engine_pos := center + up * draw_size * 0.38
+	canvas.glow_stretched(engine_pos + up * flame_len * 0.35, Color(1.0, 0.5, 0.22, 0.8 if diving else 0.55), Vector2(draw_size * 0.32, flame_len))
+	var core_pulse := 0.55 + sin(stage_timer * 4.0 + float(enemy.id)) * 0.2
+	canvas.glow(center, Color(base_color, (0.4 if is_midboss else 0.26) * core_pulse), draw_size * (1.3 if is_midboss else 0.95))
+	var hit_flash := float(enemy.get("flash", 0.0))
+	if hit_flash > 0.0 and enemy_fleet_texture:
+		canvas.draw_set_transform_matrix(Transform2D(rotation, center))
+		canvas.draw_texture_rect_region(enemy_fleet_texture, Rect2(-Vector2.ONE * draw_size * 0.5, Vector2.ONE * draw_size), _enemy_region(enemy), Color(1, 1, 1, hit_flash * 0.9))
+		canvas.draw_set_transform_matrix(Transform2D.IDENTITY)
+		canvas.glow(center, Color(1.0, 0.9, 0.75, hit_flash * 0.45), draw_size * 1.1)
+
+
+func _draw_player_lights(canvas: Node2D) -> void:
+	var center := Vector2(player.x, player.y)
+	var thrust := clampf(0.6 - player_velocity.y / 360.0 * 0.5, 0.25, 1.2)
+	var bank := clampf(player_velocity.x / 430.0, -1.0, 1.0)
+	for side in [-1.0, 1.0]:
+		var nozzle := center + Vector2(side * 11.0 * (1.0 - absf(bank) * 0.12), 38.0)
+		var flicker: float = 0.85 + fx.rng.randf() * 0.3
+		var length: float = 44.0 * thrust * flicker
+		canvas.glow_stretched(nozzle + Vector2(0, length * 0.42), Color(0.35, 0.8, 1.0, 1.0), Vector2(20.0, length * 1.2))
+		canvas.glow(nozzle + Vector2(0, 4), Color(0.85, 0.97, 1.0, 0.9), 24.0)
+	canvas.glow(center, Color(0.3, 0.75, 1.0, 0.12), 150.0)
+	if player.is_overdrive_active():
+		var radius: float = 114.0 + player.overdrive_duration_bonus * 8.0
+		var pulse := 0.5 + sin(stage_timer * 10.0) * 0.5
+		canvas.draw_arc(center, radius, 0.0, TAU, 64, Color(0.5, 0.95, 1.0, 0.18 + pulse * 0.12), 2.0, true)
+		canvas.draw_arc(center, radius - 6.0, stage_timer * 2.0, stage_timer * 2.0 + PI * 0.6, 24, Color(1.0, 0.95, 0.6, 0.35), 3.0, true)
+		canvas.draw_arc(center, radius - 6.0, stage_timer * 2.0 + PI, stage_timer * 2.0 + PI * 1.6, 24, Color(1.0, 0.95, 0.6, 0.35), 3.0, true)
+		canvas.glow(center, Color(0.4, 0.9, 1.0, 0.16 + pulse * 0.06), radius * 2.1)
 
 
 func _draw_threat_previews() -> void:
@@ -1228,10 +1511,10 @@ func _draw_boss_beam_preview() -> void:
 	var pulse := 0.5 + sin(stage_timer * 34.0) * 0.5
 	var lane_color := Color(1.0, 0.13, 0.08, 0.11 + pulse * 0.08 + charge * 0.05)
 	var core_color := Color(1.0, 0.92, 0.28, 0.18 + pulse * 0.12 + charge * 0.05)
-	draw_rect(rect, lane_color)
-	draw_rect(Rect2(rect.position.x + rect.size.x * 0.38, rect.position.y, rect.size.x * 0.24, rect.size.y), core_color)
-	draw_line(rect.position, rect.position + Vector2(0.0, rect.size.y), Color(1.0, 0.32, 0.18, 0.54), 2.0)
-	draw_line(rect.position + Vector2(rect.size.x, 0.0), rect.position + rect.size, Color(1.0, 0.32, 0.18, 0.54), 2.0)
+	_c.draw_rect(rect, lane_color)
+	_c.draw_rect(Rect2(rect.position.x + rect.size.x * 0.38, rect.position.y, rect.size.x * 0.24, rect.size.y), core_color)
+	_c.draw_line(rect.position, rect.position + Vector2(0.0, rect.size.y), Color(1.0, 0.32, 0.18, 0.54), 2.0)
+	_c.draw_line(rect.position + Vector2(rect.size.x, 0.0), rect.position + rect.size, Color(1.0, 0.32, 0.18, 0.54), 2.0)
 
 
 func _boss_beam_preview_rect() -> Rect2:
@@ -1249,8 +1532,8 @@ func _draw_enemy_dive_preview(enemy: Dictionary) -> void:
 	var pulse := 0.5 + sin(stage_timer * 18.0 + float(enemy.id)) * 0.5
 	var warning := Color(1.0, 0.28, 0.14, 0.22 + pulse * 0.08)
 	var edge := Color(1.0, 0.94, 0.38, 0.42 + pulse * 0.14)
-	draw_polyline(PackedVector2Array([start, mid, end]), warning, 14.0, true)
-	draw_polyline(PackedVector2Array([start, mid, end]), edge, 2.0, true)
+	_c.draw_polyline(PackedVector2Array([start, mid, end]), warning, 14.0, true)
+	_c.draw_polyline(PackedVector2Array([start, mid, end]), edge, 2.0, true)
 	for i in range(3):
 		var ratio := 0.22 + float(i) * 0.2
 		var center := start.lerp(end, ratio)
@@ -1260,7 +1543,7 @@ func _draw_enemy_dive_preview(enemy: Dictionary) -> void:
 			center + Vector2(size, -size * 0.7),
 			center + Vector2(0.0, size),
 		])
-		draw_colored_polygon(points, Color(1.0, 0.86, 0.24, 0.28 + pulse * 0.16))
+		_c.draw_colored_polygon(points, Color(1.0, 0.86, 0.24, 0.28 + pulse * 0.16))
 
 
 func _enemy_dive_preview_end_x(enemy: Dictionary) -> float:
@@ -1273,7 +1556,7 @@ func _draw_boss() -> void:
 	var tint := Color(1, 0.86, 0.86, 1) if boss_controller.boss.phase >= 2 else Color.WHITE
 	if final_boss_texture:
 		# Generated reactor centers align with the existing (-96,18), (96,18), (0,104) hit zones.
-		draw_texture_rect(final_boss_texture, Rect2(boss_controller.boss.x - 190.0, boss_controller.boss.y - 157.0, 380.0, 396.0), false, tint)
+		_c.draw_texture_rect(final_boss_texture, Rect2(boss_controller.boss.x - 190.0, boss_controller.boss.y - 157.0, 380.0, 396.0), false, tint)
 	if boss_controller.boss.has("parts"):
 		for part in boss_controller.boss.parts:
 			var part_pos: Vector2 = Vector2(boss_controller.boss.x, boss_controller.boss.y) + part.offset
@@ -1288,12 +1571,12 @@ func _draw_boss_weakpoint(part: Dictionary, part_pos: Vector2) -> void:
 		var cell := float(boss_weakpoint_texture.get_width()) / 2.0
 		var region := Rect2(0.0 if part.alive else cell, cell, cell, cell)
 		var size := 102.0 if part.id == "core" else 90.0
-		draw_texture_rect_region(boss_weakpoint_texture, Rect2(part_pos - Vector2.ONE * size * 0.5, Vector2.ONE * size), region, Color.WHITE if part.alive else Color(0.6, 0.6, 0.6, 1))
-	draw_circle(part_pos, radius + 6.0, Color(part_color, 0.08 + pulse * 0.05))
-	draw_arc(part_pos, radius, 0.0, TAU, 32, Color(part_color, 0.72), 3.0)
-	draw_arc(part_pos, radius + 7.0, -PI * 0.35, PI * 0.7, 18, Color(Config.UI_AMBER, 0.38 if part.alive else 0.1), 2.0)
+		_c.draw_texture_rect_region(boss_weakpoint_texture, Rect2(part_pos - Vector2.ONE * size * 0.5, Vector2.ONE * size), region, Color.WHITE if part.alive else Color(0.6, 0.6, 0.6, 1))
+	_c.draw_circle(part_pos, radius + 6.0, Color(part_color, 0.08 + pulse * 0.05))
+	_c.draw_arc(part_pos, radius, 0.0, TAU, 32, Color(part_color, 0.72), 3.0)
+	_c.draw_arc(part_pos, radius + 7.0, -PI * 0.35, PI * 0.7, 18, Color(Config.UI_AMBER, 0.38 if part.alive else 0.1), 2.0)
 	if part.alive:
-		draw_circle(part_pos, 7.0 + pulse * 2.0, Color(0.82, 0.98, 1.0, 0.9))
+		_c.draw_circle(part_pos, 7.0 + pulse * 2.0, Color(0.82, 0.98, 1.0, 0.9))
 
 
 func _draw_stage_hazard(hazard: Dictionary) -> void:
@@ -1303,7 +1586,7 @@ func _draw_stage_hazard(hazard: Dictionary) -> void:
 		if rock_obstacle_texture:
 			var size := radius * 2.65
 			var pulse := 0.94 + sin(stage_timer * 1.1 + float(hazard.seed)) * 0.035
-			draw_texture_rect(rock_obstacle_texture, Rect2(center.x - size * 0.5, center.y - size * 0.5, size, size), false, Color(1.0, 1.0, 1.0, pulse))
+			_c.draw_texture_rect(rock_obstacle_texture, Rect2(center.x - size * 0.5, center.y - size * 0.5, size, size), false, Color(1.0, 1.0, 1.0, pulse))
 			return
 		var points := PackedVector2Array()
 		var seed_value: int = int(hazard.get("seed", 0))
@@ -1311,31 +1594,31 @@ func _draw_stage_hazard(hazard: Dictionary) -> void:
 			var angle := -PI * 0.5 + float(i) / 11.0 * TAU
 			var chip := 0.78 + float((seed_value + i * 19) % 9) * 0.035
 			points.append(center + Vector2(cos(angle), sin(angle)) * radius * chip)
-		draw_colored_polygon(points, Color("#493f54"))
-		draw_polyline(points, Color("#d7b56f"), 3.0, true)
+		_c.draw_colored_polygon(points, Color("#493f54"))
+		_c.draw_polyline(points, Color("#d7b56f"), 3.0, true)
 		var inner := PackedVector2Array()
 		for i in range(points.size()):
 			inner.append(center.lerp(points[i], 0.52))
-		draw_colored_polygon(inner, Color(0.78, 0.66, 0.45, 0.32))
+		_c.draw_colored_polygon(inner, Color(0.78, 0.66, 0.45, 0.32))
 		var crack_a := center + Vector2(-radius * 0.36, -radius * 0.18)
 		var crack_b := center + Vector2(radius * 0.18, radius * 0.08)
 		var crack_c := center + Vector2(radius * 0.42, -radius * 0.2)
-		draw_polyline(PackedVector2Array([crack_a, crack_b, crack_c]), Color(1.0, 0.88, 0.55, 0.58), 2.0)
+		_c.draw_polyline(PackedVector2Array([crack_a, crack_b, crack_c]), Color(1.0, 0.88, 0.55, 0.58), 2.0)
 	elif str(hazard.kind).begins_with("plasma"):
 		var x: float = hazard.x
-		draw_rect(Rect2(x - 10.0, Config.HUD, 20.0, Config.PLAY_H), Color(0.52, 0.9, 1.0, 0.1))
-		draw_line(Vector2(x, Config.HUD), Vector2(x, Config.H), Color("#72eaff"), 3.0)
+		_c.draw_rect(Rect2(x - 10.0, Config.HUD, 20.0, Config.PLAY_H), Color(0.52, 0.9, 1.0, 0.1))
+		_c.draw_line(Vector2(x, Config.HUD), Vector2(x, Config.H), Color("#72eaff"), 3.0)
 
 
 func _draw_score_crystal(crystal: Dictionary) -> void:
 	var center := Vector2(crystal.x, crystal.y)
 	var pulse := 0.5 + sin(crystal.t * 14.0) * 0.5
-	draw_circle(center, 15.0 + pulse * 4.0, Color(0.35, 0.9, 1.0, 0.15))
+	_c.draw_circle(center, 15.0 + pulse * 4.0, Color(0.35, 0.9, 1.0, 0.15))
 	if score_crystal_texture:
 		var cell := float(score_crystal_texture.get_width()) / 2.0
 		var region := Rect2(cell, 0, cell, cell)
 		var size := 24.0 + pulse * 3.0
-		draw_texture_rect_region(score_crystal_texture, Rect2(center.x - size * 0.5, center.y - size * 0.5, size, size), region, Color.WHITE)
+		_c.draw_texture_rect_region(score_crystal_texture, Rect2(center.x - size * 0.5, center.y - size * 0.5, size, size), region, Color.WHITE)
 	else:
 		var points := PackedVector2Array([
 			center + Vector2(0.0, -10.0),
@@ -1343,14 +1626,14 @@ func _draw_score_crystal(crystal: Dictionary) -> void:
 			center + Vector2(0.0, 10.0),
 			center + Vector2(-7.0, 0.0),
 		])
-		draw_colored_polygon(points, Color("#a9f7ff"))
+		_c.draw_colored_polygon(points, Color("#a9f7ff"))
 
 
 func _draw_bullet(bullet: Dictionary) -> void:
 	if projectile_texture:
 		var visual := str(bullet.get("sprite", "enemy" if bullet.enemy else "player"))
 		if visual == "beam" and beam_enemy_texture:
-			draw_texture_rect(beam_enemy_texture, Rect2(bullet.x - 15.0, bullet.y - 48.0, 30.0, 96.0), false)
+			_c.draw_texture_rect(beam_enemy_texture, Rect2(bullet.x - 15.0, bullet.y - 48.0, 30.0, 96.0), false)
 			return
 		var region := _projectile_region(visual)
 		var width := 10.0
@@ -1368,12 +1651,12 @@ func _draw_bullet(bullet: Dictionary) -> void:
 			width = maxf(16.0, float(bullet.r) * 2.0 + 6.0)
 			height = 26.0
 		var tint := Color.WHITE
-		draw_texture_rect_region(projectile_texture, Rect2(bullet.x - width * 0.5, bullet.y - height * 0.5, width, height), region, tint)
+		_c.draw_texture_rect_region(projectile_texture, Rect2(bullet.x - width * 0.5, bullet.y - height * 0.5, width, height), region, tint)
 		return
 	var rx: float = bullet.r
 	var ry: float = bullet.r * (1.6 if bullet.enemy else 2.4)
-	draw_circle(Vector2(bullet.x, bullet.y), maxf(rx, ry), Color(bullet.color, 0.16))
-	draw_ellipse(Vector2(bullet.x, bullet.y), rx, ry, bullet.color)
+	_c.draw_circle(Vector2(bullet.x, bullet.y), maxf(rx, ry), Color(bullet.color, 0.16))
+	_c.draw_ellipse(Vector2(bullet.x, bullet.y), rx, ry, bullet.color)
 
 
 func _projectile_region(visual: String) -> Rect2:
@@ -1397,7 +1680,7 @@ func _draw_explosion(explosion: Dictionary) -> void:
 		var cell := float(explosion_texture.get_width()) / 2.0
 		var frame := mini(3, int(explosion.t / 0.13))
 		var region := Rect2(float(frame % 2) * cell, float(frame / 2) * cell, cell, cell)
-		draw_texture_rect_region(explosion_texture, Rect2(explosion.x - size * 0.5, explosion.y - size * 0.5, size, size), region, Color(1, 1, 1, 1.0 - explosion.t * 1.2))
+		_c.draw_texture_rect_region(explosion_texture, Rect2(explosion.x - size * 0.5, explosion.y - size * 0.5, size, size), region, Color(1, 1, 1, 1.0 - explosion.t * 1.2))
 
 
 func _draw_bomb_wave(wave: Dictionary) -> void:
@@ -1407,7 +1690,7 @@ func _draw_bomb_wave(wave: Dictionary) -> void:
 	var beam_width: float = wave.width * (1.0 - progress * 0.38)
 	var alpha := 1.0 - progress
 	if beam_player_texture:
-		draw_texture_rect(beam_player_texture, Rect2(wave.x - beam_width * 0.5, top, beam_width, height), false, Color(1, 1, 1, 0.72 * alpha))
+		_c.draw_texture_rect(beam_player_texture, Rect2(wave.x - beam_width * 0.5, top, beam_width, height), false, Color(1, 1, 1, 0.72 * alpha))
 
 
 func _draw_item(item: Dictionary) -> void:
@@ -1426,7 +1709,7 @@ func _draw_item(item: Dictionary) -> void:
 		color = Color("#72eaff")
 		icon_index = 4
 	var pulse := 1.0 + sin(item.t * 7.0) * 0.08
-	draw_circle(center, 30.0 * pulse, Color(color, 0.11))
+	_c.draw_circle(center, 30.0 * pulse, Color(color, 0.11))
 	_draw_status_icon(icon_index, Rect2(center.x - 27.0 * pulse, center.y - 27.0 * pulse, 54.0 * pulse, 54.0 * pulse), Color.WHITE)
 
 
@@ -1435,26 +1718,26 @@ func _draw_status_icon(index: int, rect: Rect2, tint := Color.WHITE) -> void:
 		return
 	var cell := float(status_icons_texture.get_width()) / 3.0
 	var region := Rect2(float(index % 3) * cell, float(index / 3) * cell, cell, cell)
-	draw_texture_rect_region(status_icons_texture, rect, region, tint)
+	_c.draw_texture_rect_region(status_icons_texture, rect, region, tint)
 
 
 func _draw_infection_overlay() -> void:
-	draw_rect(Rect2(0, 0, Config.W, Config.H), Color(0.0, 0.025, 0.07, 0.78))
-	draw_rect(Rect2(0, 0, Config.W, Config.H), Color(Config.UI_CYAN, 0.035))
+	_c.draw_rect(Rect2(0, 0, Config.W, Config.H), Color(0.0, 0.025, 0.07, 0.78))
+	_c.draw_rect(Rect2(0, 0, Config.W, Config.H), Color(Config.UI_CYAN, 0.035))
 	for i in range(12):
 		var y := 18.0 + float(i) * 58.0
 		var alpha := 0.08 + float(i % 3) * 0.025
-		draw_line(Vector2(0, y), Vector2(Config.W, y), Color(Config.UI_CYAN, alpha), 1.0)
+		_c.draw_line(Vector2(0, y), Vector2(Config.W, y), Color(Config.UI_CYAN, alpha), 1.0)
 	for i in range(8):
 		var x := fmod(stage_timer * 18.0 + float(i) * 137.0, Config.W)
-		draw_line(Vector2(x, Config.HUD), Vector2(x - 180.0, Config.H), Color(Config.UI_AMBER, 0.045), 1.0)
+		_c.draw_line(Vector2(x, Config.HUD), Vector2(x - 180.0, Config.H), Color(Config.UI_AMBER, 0.045), 1.0)
 
 
 func _draw_terminal_panel(rect: Rect2, accent: Color, fill_alpha := Config.UI_PANEL_ALPHA, selected := false) -> void:
 	if title_controls_texture:
-		draw_texture_rect(title_controls_texture, rect, false, Color(1, 1, 1, fill_alpha))
+		_c.draw_texture_rect(title_controls_texture, rect, false, Color(1, 1, 1, fill_alpha))
 	if selected:
-		draw_line(rect.position + Vector2(16, rect.size.y - 7), rect.end - Vector2(16, 7), accent, 3.0)
+		_c.draw_line(rect.position + Vector2(16, rect.size.y - 7), rect.end - Vector2(16, 7), accent, 3.0)
 
 
 func _draw_chrome_icon(key: String, rect: Rect2, tint := Color.WHITE) -> void:
@@ -1463,7 +1746,7 @@ func _draw_chrome_icon(key: String, rect: Rect2, tint := Color.WHITE) -> void:
 		_draw_status_icon(int(icons[key]), rect, tint)
 	elif key == "pause":
 		for offset in [0.28, 0.6]:
-			draw_rect(Rect2(rect.position + Vector2(rect.size.x * offset, rect.size.y * 0.15), rect.size * Vector2(0.13, 0.7)), tint)
+			_c.draw_rect(Rect2(rect.position + Vector2(rect.size.x * offset, rect.size.y * 0.15), rect.size * Vector2(0.13, 0.7)), tint)
 
 
 func _draw_core_glyph(center: Vector2, radius: float, accent: Color, active := false) -> void:
@@ -1478,9 +1761,9 @@ func _draw_core_glyph(center: Vector2, radius: float, accent: Color, active := f
 
 func _draw_overlay() -> void:
 	if state == GameState.TITLE and title_background_texture:
-		draw_texture_rect(title_background_texture, Rect2(0, 0, Config.W, Config.H), false, Color.WHITE)
+		_c.draw_texture_rect(title_background_texture, Rect2(0, 0, Config.W, Config.H), false, Color.WHITE)
 		_draw_title_wordmark()
-		draw_rect(Rect2(0, Config.H - 118.0, Config.W, 118.0), Color(0.01, 0.035, 0.075, 0.58))
+		_c.draw_rect(Rect2(0, Config.H - 118.0, Config.W, 118.0), Color(0.01, 0.035, 0.075, 0.58))
 		_draw_title_mode_select(0.0)
 		_draw_title_start_button()
 		return
@@ -1495,27 +1778,27 @@ func _draw_overlay() -> void:
 	var sub := "P TO RESUME" if state == GameState.PAUSED else "ENTER TO DEPLOY"
 	if state == GameState.VICTORY and ending_texture:
 		_draw_terminal_panel(Rect2(118, Config.HUD + 48, 724, 214), Config.UI_CYAN, 0.58)
-		draw_texture_rect(ending_texture, Rect2(146, Config.HUD + 56, 668, 198), false)
+		_c.draw_texture_rect(ending_texture, Rect2(146, Config.HUD + 56, 668, 198), false)
 		_draw_arcade_title(title, Config.HUD + 300.0, 44, Config.UI_TEXT)
-		hud.draw_centered(self, font, "FINAL SCORE " + str(score).pad_zeros(7), Config.HUD + 326, 22, Config.UI_AMBER)
+		hud.draw_centered(_c, font, "FINAL SCORE " + str(score).pad_zeros(7), Config.HUD + 326, 22, Config.UI_AMBER)
 		_draw_results_table(Config.HUD + 372.0)
-		hud.draw_centered(self, font, _control_mode_label(control_mode) + " / ENTER TO REDEPLOY", Config.HUD + 620, 18, Config.UI_CYAN)
+		hud.draw_centered(_c, font, _control_mode_label(control_mode) + " / ENTER TO REDEPLOY", Config.HUD + 620, 18, Config.UI_CYAN)
 	else:
 		_draw_core_glyph(Vector2(Config.W * 0.5, Config.HUD + 116.0), 38.0, Config.UI_CYAN, state == GameState.GAME_OVER)
 		_draw_arcade_title(title, Config.HUD + 216.0, 58, Config.UI_TEXT)
-		hud.draw_centered(self, font, sub, Config.HUD + 292, 22, Config.UI_CYAN)
+		hud.draw_centered(_c, font, sub, Config.HUD + 292, 22, Config.UI_CYAN)
 		if state == GameState.PAUSED:
 			_draw_controls_panel(Config.HUD + 332.0)
 		elif state == GameState.GAME_OVER and not stage_results.is_empty():
 			_draw_results_table(Config.HUD + 334.0)
 		else:
-			hud.draw_centered(self, font, "CORE SIGNAL LOST / REBUILD AND REDEPLOY", Config.HUD + 340, 17, Color(Config.UI_TEXT, 0.82))
+			hud.draw_centered(_c, font, "CORE SIGNAL LOST / REBUILD AND REDEPLOY", Config.HUD + 340, 17, Color(Config.UI_TEXT, 0.82))
 
 
 func _draw_controls_panel(y: float) -> void:
 	var rect := Rect2(260.0, y, 440.0, 202.0)
 	_draw_terminal_panel(rect, Config.UI_CYAN, 0.78)
-	draw_string(font, rect.position + Vector2(34.0, 36.0), "CONTROL CHANNELS", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Config.UI_CYAN)
+	_c.draw_string(font, rect.position + Vector2(34.0, 36.0), "CONTROL CHANNELS", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Config.UI_CYAN)
 	var rows := [
 		["MOVE", "WASD / ARROWS"],
 		["SHOT", "SPACE"],
@@ -1526,8 +1809,8 @@ func _draw_controls_panel(y: float) -> void:
 	]
 	for i in range(rows.size()):
 		var row_y := y + 66.0 + float(i) * 22.0
-		draw_string(font, Vector2(rect.position.x + 34.0, row_y), rows[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Config.UI_AMBER if i == 3 else Config.UI_CYAN)
-		draw_string(font, Vector2(rect.position.x + 184.0, row_y), rows[i][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(Config.UI_TEXT, 0.82))
+		_c.draw_string(font, Vector2(rect.position.x + 34.0, row_y), rows[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Config.UI_AMBER if i == 3 else Config.UI_CYAN)
+		_c.draw_string(font, Vector2(rect.position.x + 184.0, row_y), rows[i][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(Config.UI_TEXT, 0.82))
 
 
 func _draw_title_wordmark() -> void:
@@ -1542,9 +1825,9 @@ func _draw_title_line(text: String, rect: Rect2, preferred_size: int, minimum_si
 		size -= 1
 	var text_size := title_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 	var position := Vector2(rect.position.x + (rect.size.x - text_size.x) * 0.5, rect.position.y + size)
-	draw_string(title_font, position + Vector2(5.0, 6.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.0, 0.03, 0.1, 0.92))
-	draw_string(title_font, position + Vector2(2.0, 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_CYAN, 0.72))
-	draw_string(title_font, position, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+	_c.draw_string(title_font, position + Vector2(5.0, 6.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.0, 0.03, 0.1, 0.92))
+	_c.draw_string(title_font, position + Vector2(2.0, 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_CYAN, 0.72))
+	_c.draw_string(title_font, position, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 
 func _draw_centered_in_width(text: String, x: float, width: float, y: float, size: int, color: Color) -> void:
@@ -1553,7 +1836,7 @@ func _draw_centered_in_width(text: String, x: float, width: float, y: float, siz
 	while fitted_size > 8 and label_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fitted_size).x > width - 10.0:
 		fitted_size -= 1
 	var text_size := label_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fitted_size)
-	draw_string(label_font, Vector2(x + (width - text_size.x) / 2.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fitted_size, color)
+	_c.draw_string(label_font, Vector2(x + (width - text_size.x) / 2.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fitted_size, color)
 
 
 func _draw_results_table(y: float) -> void:
@@ -1563,22 +1846,22 @@ func _draw_results_table(y: float) -> void:
 	var cols := [x, x + 230.0, x + 382.0, x + 500.0, x + 590.0, x + 704.0]
 	_draw_terminal_panel(Rect2(x - 24.0, y - 28.0, 760.0, row_h * 6.0 + 60.0), Config.UI_RED, 0.74)
 	for i in range(headers.size()):
-		draw_string(font, Vector2(cols[i], y), headers[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Config.UI_TEXT_DIM)
+		_c.draw_string(font, Vector2(cols[i], y), headers[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Config.UI_TEXT_DIM)
 	for r in range(stage_results.size()):
 		var result: Dictionary = stage_results[r]
 		var row_y := y + 30.0 + float(r) * row_h
 		var rank_color := _rank_color(str(result.rank))
 		if r % 2 == 0:
-			draw_rect(Rect2(x - 10.0, row_y - 16.0, 720.0, 23.0), Color(Config.UI_RED, 0.07))
-		draw_string(font, Vector2(cols[0], row_y), str(result.name), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_TEXT)
-		draw_string(font, Vector2(cols[1], row_y), str(result.score).pad_zeros(5), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_CYAN)
-		draw_string(font, Vector2(cols[2], row_y), str(result.chain), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
-		draw_string(font, Vector2(cols[3], row_y), str(result.damage), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ff9aa8"))
-		draw_string(font, Vector2(cols[4], row_y), str(result.bombs), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
-		draw_string(font, Vector2(cols[5], row_y), str(result.rank), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, rank_color)
+			_c.draw_rect(Rect2(x - 10.0, row_y - 16.0, 720.0, 23.0), Color(Config.UI_RED, 0.07))
+		_c.draw_string(font, Vector2(cols[0], row_y), str(result.name), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_TEXT)
+		_c.draw_string(font, Vector2(cols[1], row_y), str(result.score).pad_zeros(5), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_CYAN)
+		_c.draw_string(font, Vector2(cols[2], row_y), str(result.chain), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
+		_c.draw_string(font, Vector2(cols[3], row_y), str(result.damage), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ff9aa8"))
+		_c.draw_string(font, Vector2(cols[4], row_y), str(result.bombs), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
+		_c.draw_string(font, Vector2(cols[5], row_y), str(result.rank), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, rank_color)
 	if not stage_results.is_empty():
 		var last_result: Dictionary = stage_results[stage_results.size() - 1]
-		draw_string(font, Vector2(x, y + row_h * 6.0 + 24.0), str(last_result.get("tip", "NEXT: AIM FOR SSS")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
+		_c.draw_string(font, Vector2(x, y + row_h * 6.0 + 24.0), str(last_result.get("tip", "NEXT: AIM FOR SSS")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
 
 
 func _rank_color(rank: String) -> Color:
@@ -1602,9 +1885,9 @@ func _draw_control_mode_badge() -> void:
 	var y := 42.0
 	var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var rect := Rect2(x - 9.0, y - 15.0, text_size.x + 18.0, 20.0)
-	draw_rect(rect, Color(Config.UI_PANEL_DARK, 0.52))
-	draw_rect(rect, Color(color, 0.18), false, 1.0)
-	draw_string(font, Vector2(x, y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+	_c.draw_rect(rect, Color(Config.UI_PANEL_DARK, 0.52))
+	_c.draw_rect(rect, Color(color, 0.18), false, 1.0)
+	_c.draw_string(font, Vector2(x, y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
 
 
 func _draw_touch_controls() -> void:
@@ -1612,13 +1895,13 @@ func _draw_touch_controls() -> void:
 	var move_radius := Config.UI_TOUCH_STICK_RADIUS
 	var stick_offset := touch_move_vector * 38.0
 	var active_color := Config.UI_AMBER if touch_move_index != -1 else Color(Config.UI_TEXT, 0.38)
-	draw_circle(move_center, move_radius, Color(Config.UI_PANEL_DARK, 0.34))
-	draw_arc(move_center, move_radius, 0.0, TAU, 56, Color(Config.UI_CYAN, 0.36), 3.0)
-	draw_arc(move_center, move_radius - 15.0, -PI * 0.15, PI * 1.15, 44, Color(Config.UI_CYAN, 0.24), 2.0)
-	draw_line(move_center + Vector2(-move_radius + 16.0, 0), move_center + Vector2(move_radius - 16.0, 0), Color(Config.UI_CYAN, 0.12), 1.0)
-	draw_line(move_center + Vector2(0, -move_radius + 16.0), move_center + Vector2(0, move_radius - 16.0), Color(Config.UI_CYAN, 0.12), 1.0)
-	draw_circle(move_center + stick_offset, Config.UI_TOUCH_KNOB, Color(active_color, 0.34))
-	draw_arc(move_center + stick_offset, Config.UI_TOUCH_KNOB, 0.0, TAU, 32, active_color, 2.0)
+	_c.draw_circle(move_center, move_radius, Color(Config.UI_PANEL_DARK, 0.34))
+	_c.draw_arc(move_center, move_radius, 0.0, TAU, 56, Color(Config.UI_CYAN, 0.36), 3.0)
+	_c.draw_arc(move_center, move_radius - 15.0, -PI * 0.15, PI * 1.15, 44, Color(Config.UI_CYAN, 0.24), 2.0)
+	_c.draw_line(move_center + Vector2(-move_radius + 16.0, 0), move_center + Vector2(move_radius - 16.0, 0), Color(Config.UI_CYAN, 0.12), 1.0)
+	_c.draw_line(move_center + Vector2(0, -move_radius + 16.0), move_center + Vector2(0, move_radius - 16.0), Color(Config.UI_CYAN, 0.12), 1.0)
+	_c.draw_circle(move_center + stick_offset, Config.UI_TOUCH_KNOB, Color(active_color, 0.34))
+	_c.draw_arc(move_center + stick_offset, Config.UI_TOUCH_KNOB, 0.0, TAU, 32, active_color, 2.0)
 
 	var button_hitboxes := _touch_button_hitboxes()
 	_draw_touch_button(Rect2(button_hitboxes.shoot), "SHOT", "shot", Config.UI_CYAN, bool(touch_button_pressed.shoot))
@@ -1629,9 +1912,9 @@ func _draw_touch_controls() -> void:
 
 func _draw_touch_button(rect: Rect2, label: String, icon_key: String, color: Color, active: bool) -> void:
 	var fill_alpha := 0.34 if active else 0.16
-	draw_circle(rect.get_center(), rect.size.x * 0.5, Color(Config.UI_PANEL_DARK, 0.36))
-	draw_circle(rect.get_center(), rect.size.x * 0.5 - 6.0, Color(color, fill_alpha))
-	draw_arc(rect.get_center(), rect.size.x * 0.5 - 4.0, 0.0, TAU, 40, Color(color, 0.78 if active else 0.46), 3.0 if active else 2.0)
+	_c.draw_circle(rect.get_center(), rect.size.x * 0.5, Color(Config.UI_PANEL_DARK, 0.36))
+	_c.draw_circle(rect.get_center(), rect.size.x * 0.5 - 6.0, Color(color, fill_alpha))
+	_c.draw_arc(rect.get_center(), rect.size.x * 0.5 - 4.0, 0.0, TAU, 40, Color(color, 0.78 if active else 0.46), 3.0 if active else 2.0)
 	_draw_chrome_icon(icon_key, Rect2(rect.get_center().x - rect.size.x * 0.24, rect.get_center().y - rect.size.y * 0.3, rect.size.x * 0.48, rect.size.y * 0.48), Color(1, 1, 1, 0.82))
 	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.74, 12, Color(0.98, 1.0, 1.0, 0.86))
 
@@ -1725,21 +2008,21 @@ func _draw_stage_banner(text: String, y: float, alpha: float) -> void:
 	var x := (Config.W - text_size.x) / 2.0
 	var panel := Rect2((Config.W - 520.0) * 0.5, y - 48.0, 520.0, 72.0)
 	if title_controls_texture:
-		draw_texture_rect(title_controls_texture, panel, false, Color(1, 1, 1, alpha * 0.84))
-	draw_string(banner_font, Vector2(x + 2.0, y + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.62 * alpha))
-	draw_string(banner_font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_TEXT, alpha))
+		_c.draw_texture_rect(title_controls_texture, panel, false, Color(1, 1, 1, alpha * 0.84))
+	_c.draw_string(banner_font, Vector2(x + 2.0, y + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.62 * alpha))
+	_c.draw_string(banner_font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_TEXT, alpha))
 
 
 func _draw_arcade_title(text: String, y: float, size: int, color: Color) -> void:
 	var title_font := display_font if display_font else font
 	var text_size := title_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 	var x := (Config.W - text_size.x) / 2.0
-	draw_string(title_font, Vector2(x + 3.0, y + 3.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.0, 0.0, 0.0, 0.72))
-	draw_string(title_font, Vector2(x + 1.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_CYAN, 0.42))
-	draw_string(title_font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
-	draw_line(Vector2(x - 42.0, y + 10.0), Vector2(x - 10.0, y + 10.0), Config.UI_AMBER, 3.0)
-	draw_line(Vector2(x + text_size.x + 10.0, y + 10.0), Vector2(x + text_size.x + 42.0, y + 10.0), Config.UI_AMBER, 3.0)
-	draw_line(Vector2(x - 24.0, y + 17.0), Vector2(x + text_size.x + 24.0, y + 17.0), Color(Config.UI_CYAN, 0.16), 1.0)
+	_c.draw_string(title_font, Vector2(x + 3.0, y + 3.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.0, 0.0, 0.0, 0.72))
+	_c.draw_string(title_font, Vector2(x + 1.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_CYAN, 0.42))
+	_c.draw_string(title_font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+	_c.draw_line(Vector2(x - 42.0, y + 10.0), Vector2(x - 10.0, y + 10.0), Config.UI_AMBER, 3.0)
+	_c.draw_line(Vector2(x + text_size.x + 10.0, y + 10.0), Vector2(x + text_size.x + 42.0, y + 10.0), Config.UI_AMBER, 3.0)
+	_c.draw_line(Vector2(x - 24.0, y + 17.0), Vector2(x + text_size.x + 24.0, y + 17.0), Color(Config.UI_CYAN, 0.16), 1.0)
 
 
 func _distance(a: Dictionary, b: Dictionary) -> float:
@@ -1779,6 +2062,11 @@ func _damage_boss_part(point: Vector2, power: int) -> int:
 			_add_flash(0.34, 0.02)
 			for i in range(4):
 				explosions.append({"x": part_pos.x + randf_range(-24.0, 24.0), "y": part_pos.y + randf_range(-24.0, 24.0), "t": -float(i) * 0.025, "big": true})
+			if fx:
+				fx.shatter(part_pos, 18, 320.0, 1.8)
+				fx.ring(part_pos, Color(1.0, 0.7, 0.4, 0.9), 200.0, 0.5, 5.0)
+				fx.flash_glow(part_pos, Color(1.0, 0.85, 0.6, 1.0), 260.0, 0.3)
+				fx.popup(part_pos, "CORE BREAK", Config.UI_AMBER, 22, 1.0)
 			return 8
 		return 2
 	return 0
