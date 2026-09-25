@@ -157,7 +157,7 @@ func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: fl
 			var kind_mult := 1.7 if enemy.kind == "saucer" else 1.45 if is_commander else 1.18 if is_midboss else 1.0
 			var chance: float = stage_data.fire * difficulty * command_fire_mult * kind_mult
 			enemy.shoot = 1.2 + (randf() * 3.4 / maxf(0.55, chance))
-			if is_commander or is_midboss or randf() < 0.2 + stage_index * 0.035 or enemy.dive > 0.0:
+			if is_commander or is_midboss or randf() < 0.48 + stage_index * 0.05 or enemy.dive > 0.0:
 				if beat_tick == null:
 					projectiles.fire_enemy(enemy, player_x, enemy_stats)
 				else:
@@ -165,6 +165,15 @@ func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: fl
 		if beat_tick == true and enemy.get("armed", false):
 			enemy.armed = false
 			projectiles.fire_enemy(enemy, player_x, enemy_stats)
+
+
+# Bar downbeat volley: a few formation nodes arm together so fire lands in rhythmic waves.
+func arm_downbeat_volley(stage_index: int, difficulty: float) -> void:
+	var candidates := enemies.filter(func(enemy: Dictionary) -> bool: return enemy.kind != "commander" and not str(enemy.kind).begins_with("mid_") and float(enemy.get("dive", 0.0)) <= 0.0 and float(enemy.get("stun", 0.0)) <= 0.0 and int(enemy.hp) > 0)
+	var count := mini(candidates.size(), 2 + stage_index / 2 + int(difficulty > 1.2))
+	for i in range(count):
+		var pick: Dictionary = candidates[randi() % candidates.size()]
+		pick.armed = true
 
 
 func _midboss_is_resting(enemy: Dictionary, stage_timer: float) -> bool:

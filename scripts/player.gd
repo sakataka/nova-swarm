@@ -33,7 +33,9 @@ var _min_y := 282.0
 var _max_y := 676.0
 
 const RESONANCE_MAX := 100.0
-const OVERDRIVE_DURATION := 5.0
+const OVERDRIVE_DURATION := 4.5
+# Global resonance gain scale: keeps Overdrive a burst rather than a default state.
+const RESONANCE_GAIN := 0.36
 
 
 func setup(start_x: float, start_y: float, min_x: float, max_x: float, min_y: float, max_y: float) -> void:
@@ -118,7 +120,7 @@ func start_overdrive() -> void:
 func add_resonance(amount: float) -> void:
 	if overdrive_timer > 0.0:
 		return
-	resonance = clampf(resonance + amount * resonance_gain_scale, 0.0, RESONANCE_MAX)
+	resonance = clampf(resonance + amount * resonance_gain_scale * RESONANCE_GAIN, 0.0, RESONANCE_MAX)
 
 
 func is_overdrive_active() -> bool:
@@ -197,7 +199,7 @@ func _apply_chip_levels() -> void:
 	shot_power_bonus = 1 if power_level >= 3 else 0
 	shot_pattern = "nova" if spread_level >= 3 else "wide" if spread_level >= 1 else "twin"
 	resonance_gain_scale = 1.0 + float(resonance_level) * 0.16
-	overdrive_duration_bonus = float(resonance_level) * 0.8
+	overdrive_duration_bonus = float(resonance_level) * 0.5
 	close_kill_extend = resonance_level >= 2
 
 

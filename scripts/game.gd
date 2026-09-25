@@ -707,6 +707,8 @@ func _update_game(dt: float) -> void:
 	var beat_tick := _pending_beat_tick
 	_pending_beat_tick = false
 	_sync_popup_cooldown = maxf(0.0, _sync_popup_cooldown - dt)
+	if beat_tick and beat_clock.bar_position() == 3 and not st.boss:
+		swarm.arm_downbeat_volley(stage, difficulty)
 	swarm.update(dt, st, stage, stage_timer, difficulty, player.x, projectiles, Config.ENEMY_STATS, beat_tick)
 	_track_enemy_motion(dt)
 	_update_network(dt)
@@ -792,7 +794,7 @@ func _on_enemy_surged(enemy: Dictionary, surge: Dictionary, by_id: Dictionary) -
 	if player.is_overdrive_active():
 		multiplier *= 1.75
 	score += int(float(enemy.score) * multiplier)
-	player.add_resonance(2.0 + minf(6.0, float(chain_count)) * 0.5)
+	player.add_resonance(0.8 + minf(6.0, float(chain_count)) * 0.25)
 	var is_midboss: bool = str(enemy.kind).begins_with("mid_")
 	var big: bool = enemy.kind in ["armor", "saucer", "commander"] or is_midboss
 	explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": big})
@@ -881,7 +883,7 @@ func _fire_player() -> void:
 func _start_overdrive() -> void:
 	player.start_overdrive()
 	if beat_clock.is_on_beat():
-		player.overdrive_timer += 1.5
+		player.overdrive_timer += 1.0
 		score += 500
 		if fx:
 			fx.popup(Vector2(player.x, player.y - 96.0), "PERFECT SYNC", Color("#ffe27a"), 24, 1.2)
@@ -1030,7 +1032,7 @@ func _convert_overdrive_bullets(dt: float) -> void:
 	if converted > 0:
 		projectiles.bullets = kept
 		score += converted * 35
-		player.overdrive_timer = minf(player.get_overdrive_duration() + 2.0, player.overdrive_timer + converted * 0.035 * dt * 60.0)
+		player.overdrive_timer = minf(player.get_overdrive_duration() + 0.6, player.overdrive_timer + converted * 0.015 * dt * 60.0)
 		audio_manager.play_sfx("graze")
 
 
@@ -1113,7 +1115,7 @@ func _check_collisions() -> void:
 			bullet.y = -999.0
 			var weak_bonus := _damage_boss_part(impact, bullet.power)
 			boss_controller.boss.hp -= bullet.power + weak_bonus
-			player.add_resonance(1.4 + float(bullet.power) * 0.65)
+			player.add_resonance(0.45 + float(bullet.power) * 0.25)
 			var boss_score: int = 8 + min(player.combo, 20) + weak_bonus * 14
 			score += int(boss_score * (2.0 if player.is_overdrive_active() else 1.0))
 			explosions.append({"x": impact.x, "y": impact.y + 20.0, "t": 0.0, "big": false})
@@ -1143,7 +1145,7 @@ func _check_collisions() -> void:
 					if synced and _sync_popup_cooldown <= 0.0:
 						_sync_popup_cooldown = 0.5
 						fx.popup(Vector2(player.x + 40.0, player.y - 40.0), "SYNC", Color("#ffe27a"), 14, 0.6)
-				player.add_resonance(12.0 if synced else 7.5)
+				player.add_resonance(6.0 if synced else 3.6)
 				score += 25 if player.is_overdrive_active() else 5
 				if player.graze_chain_bonus:
 					player.combo = maxi(1, player.combo + 1)
@@ -1179,7 +1181,7 @@ func _check_collisions() -> void:
 func _on_enemy_shot_down(enemy: Dictionary) -> void:
 	var multiplier: float = player.register_kill()
 	var close_bonus := maxf(0.0, 1.0 - Vector2(enemy.x, enemy.y).distance_to(Vector2(player.x, player.y)) / 180.0)
-	player.add_resonance(3.0 + minf(10.0, float(player.combo)) * 0.55 + close_bonus * 6.0)
+	player.add_resonance(1.4 + minf(10.0, float(player.combo)) * 0.25 + close_bonus * 4.0)
 	if player.close_kill_extend and player.is_overdrive_active() and close_bonus > 0.25:
 		player.overdrive_timer = minf(player.get_overdrive_duration() + 2.0, player.overdrive_timer + 0.18 + close_bonus * 0.18)
 	if player.is_overdrive_active():
@@ -1356,7 +1358,7 @@ func _tip_for_stage(score_gain: int, max_chain: int, damage: int, bombs_used: in
 
 
 func _handle_commander_defeat(enemy: Dictionary) -> void:
-	player.add_resonance(26.0)
+	player.add_resonance(16.0)
 	_add_shake(4.6)
 	_add_flash(0.42, 0.025)
 	for i in range(5):
@@ -1378,7 +1380,7 @@ func _handle_commander_defeat(enemy: Dictionary) -> void:
 
 func _handle_midboss_defeat(enemy: Dictionary) -> void:
 	_trigger_highlight(Vector2(enemy.x, enemy.y), "MIDBOSS DOWN", 0.9)
-	player.add_resonance(34.0)
+	player.add_resonance(22.0)
 	player.shield = mini(player.shield_max, player.shield + 1)
 	for i in range(8):
 		explosions.append({"x": enemy.x + sin(float(i) * 1.9) * 72.0, "y": enemy.y + cos(float(i) * 1.5) * 58.0, "t": -float(i) * 0.022, "big": true})
@@ -2287,7 +2289,7 @@ func _draw_title_mode_select(y: float) -> void:
 	_draw_title_control(Rect2(hitboxes.ai), selected_control_mode == ControlMode.AI, "AI DEMO")
 	var ai_rect := Rect2(hitboxes.ai)
 	var personality_color := Config.UI_AMBER if selected_control_mode == ControlMode.AI else Color(Config.UI_TEXT, 0.45)
-	_draw_centered_in_width("< " + str(ai_pilot.personality).to_upper() + " >", ai_rect.position.x, ai_rect.size.x, ai_rect.position.y + 54.0, 10, personality_color)
+	_draw_centered_in_width("< " + str(ai_pilot.personality).to_upper() + " >", ai_rect.position.x, ai_rect.size.x, ai_rect.position.y + 19.0, 10, personality_color)
 
 
 func _draw_title_start_button() -> void:
@@ -2442,7 +2444,7 @@ func _damage_boss_part(point: Vector2, power: int) -> int:
 		if part.hp <= 0:
 			part.alive = false
 			score += 1200
-			player.add_resonance(18.0)
+			player.add_resonance(12.0)
 			_add_shake(3.8)
 			_add_flash(0.34, 0.02)
 			for i in range(4):

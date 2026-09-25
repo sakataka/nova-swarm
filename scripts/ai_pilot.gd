@@ -17,8 +17,8 @@ const PERSONALITIES := ["balanced", "aggressive", "careful"]
 # its attack position, how much it values chain targets and when it bombs.
 const PROFILES := {
 	"balanced": {"danger": 6.4, "intent": 0.0044, "chain": 55.0, "bomb": 1.0, "item": 1.0},
-	"aggressive": {"danger": 5.2, "intent": 0.0064, "chain": 95.0, "bomb": 0.9, "item": 0.8},
-	"careful": {"danger": 8.2, "intent": 0.0034, "chain": 35.0, "bomb": 1.12, "item": 1.25},
+	"aggressive": {"danger": 6.0, "intent": 0.0058, "chain": 90.0, "bomb": 1.0, "item": 0.85},
+	"careful": {"danger": 7.6, "intent": 0.0041, "chain": 45.0, "bomb": 1.1, "item": 1.2},
 }
 
 var personality := "balanced"
