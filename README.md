@@ -251,3 +251,7 @@ args = ["-y", "@coding-solo/godot-mcp"]
 GODOT_PATH = "/Applications/Godot.app/Contents/MacOS/Godot"
 DEBUG = "true"
 ```
+
+### iPhone の表示
+
+Web export は `web-shell.html` を使い、420×912px の安全領域と左端20pxの戻る操作を確保します。配色・ゲーム構図は維持します。起動時のモーション軽減設定で画面揺れ・拡大・フラッシュ・追加エフェクトを抑え、透明度軽減ではタッチ操作の背景を不透明にします。横長ゲームを縦画面に縮小するため、一部のゲーム内操作は44px未満です。44px対応にはタッチ操作の再配置が別途必要です。

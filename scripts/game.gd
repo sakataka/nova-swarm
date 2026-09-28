@@ -24,6 +24,8 @@ var stage := 0
 var score := 0
 var stage_timer := 0.0
 var difficulty := 1.0
+var reduced_motion := false
+var reduced_transparency := false
 var screen_shake := 0.0
 var flash := 0.0
 var hitstop := 0.0
@@ -118,6 +120,9 @@ var warp := 0.0
 
 func _ready() -> void:
 	randomize()
+	if OS.has_feature("web"):
+		reduced_motion = bool(JavaScriptBridge.eval("matchMedia('(prefers-reduced-motion: reduce)').matches"))
+		reduced_transparency = bool(JavaScriptBridge.eval("matchMedia('(prefers-reduced-transparency: reduce)').matches"))
 	_c = self
 	_setup_native_window()
 	_setup_runtime_models()
@@ -391,14 +396,14 @@ func _update_visuals(dt: float) -> void:
 		if state == GameState.PLAYING:
 			fx.update(dt)
 		var shake := Vector2.ZERO
-		if screen_shake > 0.0:
+		if screen_shake > 0.0 and not reduced_motion:
 			shake = Vector2(fx.rng.randf_range(-screen_shake, screen_shake), fx.rng.randf_range(-screen_shake, screen_shake)).round()
-		var zoom := overdrive_zoom * (1.0 + 0.08 * highlight_strength)
+		var zoom := 1.0 if reduced_motion else overdrive_zoom * (1.0 + 0.08 * highlight_strength)
 		var pivot := Vector2(Config.W, Config.H) * 0.5
 		pivot = pivot.lerp(Vector2(highlight_focus.x, clampf(highlight_focus.y, Config.HUD + 120.0, Config.H - 120.0)), highlight_strength)
 		_world_xform = Transform2D(0.0, Vector2(zoom, zoom), 0.0, shake + pivot - pivot * zoom)
 		fx.transform = _world_xform
-		fx.visible = state in [GameState.PLAYING, GameState.PAUSED]
+		fx.visible = not reduced_motion and state in [GameState.PLAYING, GameState.PAUSED]
 		fx.queue_redraw()
 	if ui_layer:
 		ui_layer.queue_redraw()
@@ -1428,7 +1433,7 @@ func draw_ui_pass(canvas: CanvasItem) -> void:
 			_draw_ai_readout()
 		else:
 			_draw_ai_pace()
-	if flash > 0.0:
+	if flash > 0.0 and not reduced_motion:
 		_c.draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.34))
 	if stage_banner > 0.0 and state == GameState.PLAYING:
 		var alpha := minf(1.0, stage_banner)
@@ -2221,7 +2226,7 @@ func _draw_touch_controls() -> void:
 	var move_radius := Config.UI_TOUCH_STICK_RADIUS
 	var stick_offset := touch_move_vector * 38.0
 	var active_color := Config.UI_AMBER if touch_move_index != -1 else Color(Config.UI_TEXT, 0.38)
-	_c.draw_circle(move_center, move_radius, Color(Config.UI_PANEL_DARK, 0.34))
+	_c.draw_circle(move_center, move_radius, Color(Config.UI_PANEL_DARK, 1.0 if reduced_transparency else 0.34))
 	_c.draw_arc(move_center, move_radius, 0.0, TAU, 56, Color(Config.UI_CYAN, 0.36), 3.0)
 	_c.draw_arc(move_center, move_radius - 15.0, -PI * 0.15, PI * 1.15, 44, Color(Config.UI_CYAN, 0.24), 2.0)
 	_c.draw_line(move_center + Vector2(-move_radius + 16.0, 0), move_center + Vector2(move_radius - 16.0, 0), Color(Config.UI_CYAN, 0.12), 1.0)
@@ -2238,7 +2243,7 @@ func _draw_touch_controls() -> void:
 
 func _draw_touch_button(rect: Rect2, label: String, icon_key: String, color: Color, active: bool) -> void:
 	var fill_alpha := 0.34 if active else 0.16
-	_c.draw_circle(rect.get_center(), rect.size.x * 0.5, Color(Config.UI_PANEL_DARK, 0.36))
+	_c.draw_circle(rect.get_center(), rect.size.x * 0.5, Color(Config.UI_PANEL_DARK, 1.0 if reduced_transparency else 0.36))
 	_c.draw_circle(rect.get_center(), rect.size.x * 0.5 - 6.0, Color(color, fill_alpha))
 	_c.draw_arc(rect.get_center(), rect.size.x * 0.5 - 4.0, 0.0, TAU, 40, Color(color, 0.78 if active else 0.46), 3.0 if active else 2.0)
 	_draw_chrome_icon(icon_key, Rect2(rect.get_center().x - rect.size.x * 0.24, rect.get_center().y - rect.size.y * 0.3, rect.size.x * 0.48, rect.size.y * 0.48), Color(1, 1, 1, 0.82))
