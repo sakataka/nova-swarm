@@ -104,6 +104,24 @@ func _initialize() -> void:
 	shoot_touch.pressed = false
 	_assert(scene._handle_touch_controls_input(shoot_touch), "touch shot button releases")
 
+	# Portrait pad: a 400px-wide canvas shows 2.4 units per CSS px, so 44px needs about 106 units.
+	scene.portrait_pad = true
+	var portrait_buttons: Dictionary = scene._touch_button_hitboxes()
+	for action in ["shoot", "bomb", "overdrive"]:
+		_assert(Rect2(portrait_buttons[action]).size.x >= 106.0, "portrait %s button keeps a 44px target" % action)
+	_assert(scene._touch_pause_hitbox().size.x >= 106.0, "portrait pause button keeps a 44px target")
+	_assert(not scene._touch_move_hitbox().intersects(Rect2(portrait_buttons.bomb)), "portrait move pad stays clear of the buttons")
+	move_touch.pressed = true
+	move_touch.position = scene._touch_move_center()
+	_assert(scene._handle_touch_controls_input(move_touch), "portrait move pad starts")
+	move_drag.position = scene._touch_move_center() + Vector2(90.0, -70.0)
+	_assert(scene._handle_touch_controls_input(move_drag), "portrait move pad drags")
+	touch_command = scene._read_player_command()
+	_assert(touch_command.move_vector.x > 0.3 and touch_command.move_vector.y < -0.2, "portrait move vector feeds manual command")
+	move_touch.pressed = false
+	_assert(scene._handle_touch_controls_input(move_touch), "portrait move pad releases")
+	scene.portrait_pad = false
+
 	scene.selected_control_mode = scene.ControlMode.AI
 	scene.reset()
 	_assert(scene.control_mode == scene.ControlMode.AI, "ai selection starts ai play")

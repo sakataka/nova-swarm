@@ -49,6 +49,8 @@ var touch_move_vector := Vector2.ZERO
 var touch_button_indices := {"shoot": -1, "bomb": -1, "overdrive": -1}
 var touch_button_pressed := {"shoot": false, "bomb": false}
 var touch_overdrive_queued := false
+# Tall touch screens extend the canvas below the playfield and move the controls there.
+var portrait_pad := false
 var _web_document: Variant = null
 var _web_window: Variant = null
 var _web_visibility_callback: Variant = null
@@ -156,6 +158,8 @@ func _ready() -> void:
 	_setup_spectator()
 	audio_manager.play_music("title", 0.25)
 	_parse_web_query()
+	_update_portrait_pad()
+	get_tree().root.size_changed.connect(_update_portrait_pad)
 	queue_redraw()
 
 
@@ -499,7 +503,7 @@ func _handle_touch_controls_input(event: InputEvent) -> bool:
 	if event is InputEventScreenDrag:
 		var drag_event := event as InputEventScreenDrag
 		if drag_event.index == touch_move_index:
-			touch_move_vector = ((drag_event.position - touch_move_origin) / 62.0).limit_length(1.0)
+			touch_move_vector = ((drag_event.position - touch_move_origin) / (112.0 if portrait_pad else 62.0)).limit_length(1.0)
 			return true
 	return false
 
@@ -1440,6 +1444,8 @@ func draw_ui_pass(canvas: CanvasItem) -> void:
 		_draw_stage_banner(Config.STAGES[stage].name, Config.HUD + 118.0, alpha)
 	if state != GameState.PLAYING:
 		_draw_overlay()
+	if portrait_pad:
+		_draw_portrait_pad_panel()
 	if _should_draw_touch_controls():
 		_draw_touch_controls()
 	_c = self
@@ -2223,16 +2229,17 @@ func _draw_control_mode_badge() -> void:
 
 func _draw_touch_controls() -> void:
 	var move_center := _touch_move_center()
-	var move_radius := Config.UI_TOUCH_STICK_RADIUS
-	var stick_offset := touch_move_vector * 38.0
+	var move_radius := Config.UI_TOUCH_STICK_RADIUS * (1.8 if portrait_pad else 1.0)
+	var knob := Config.UI_TOUCH_KNOB * (1.8 if portrait_pad else 1.0)
+	var stick_offset := touch_move_vector * move_radius * 0.41
 	var active_color := Config.UI_AMBER if touch_move_index != -1 else Color(Config.UI_TEXT, 0.38)
 	_c.draw_circle(move_center, move_radius, Color(Config.UI_PANEL_DARK, 1.0 if reduced_transparency else 0.34))
 	_c.draw_arc(move_center, move_radius, 0.0, TAU, 56, Color(Config.UI_CYAN, 0.36), 3.0)
 	_c.draw_arc(move_center, move_radius - 15.0, -PI * 0.15, PI * 1.15, 44, Color(Config.UI_CYAN, 0.24), 2.0)
 	_c.draw_line(move_center + Vector2(-move_radius + 16.0, 0), move_center + Vector2(move_radius - 16.0, 0), Color(Config.UI_CYAN, 0.12), 1.0)
 	_c.draw_line(move_center + Vector2(0, -move_radius + 16.0), move_center + Vector2(0, move_radius - 16.0), Color(Config.UI_CYAN, 0.12), 1.0)
-	_c.draw_circle(move_center + stick_offset, Config.UI_TOUCH_KNOB, Color(active_color, 0.34))
-	_c.draw_arc(move_center + stick_offset, Config.UI_TOUCH_KNOB, 0.0, TAU, 32, active_color, 2.0)
+	_c.draw_circle(move_center + stick_offset, knob, Color(active_color, 0.34))
+	_c.draw_arc(move_center + stick_offset, knob, 0.0, TAU, 32, active_color, 2.0)
 
 	var button_hitboxes := _touch_button_hitboxes()
 	_draw_touch_button(Rect2(button_hitboxes.shoot), "SHOT", "shot", Config.UI_CYAN, bool(touch_button_pressed.shoot))
@@ -2247,7 +2254,29 @@ func _draw_touch_button(rect: Rect2, label: String, icon_key: String, color: Col
 	_c.draw_circle(rect.get_center(), rect.size.x * 0.5 - 6.0, Color(color, fill_alpha))
 	_c.draw_arc(rect.get_center(), rect.size.x * 0.5 - 4.0, 0.0, TAU, 40, Color(color, 0.78 if active else 0.46), 3.0 if active else 2.0)
 	_draw_chrome_icon(icon_key, Rect2(rect.get_center().x - rect.size.x * 0.24, rect.get_center().y - rect.size.y * 0.3, rect.size.x * 0.48, rect.size.y * 0.48), Color(1, 1, 1, 0.82))
-	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.74, 12, Color(0.98, 1.0, 1.0, 0.86))
+	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.74, 26 if portrait_pad else 12, Color(0.98, 1.0, 1.0, 0.86))
+
+
+# The pad fills the canvas below the playfield and hides world sprites that drift past its bottom edge.
+func _draw_portrait_pad_panel() -> void:
+	var panel := Rect2(0.0, Config.H, Config.W, get_viewport_rect().size.y - Config.H)
+	_c.draw_rect(panel, Config.UI_PANEL_DARK)
+	_c.draw_line(panel.position, panel.position + Vector2(Config.W, 0.0), Color(Config.UI_CYAN, 0.36), 2.0)
+
+
+func _update_portrait_pad() -> void:
+	var window_size := Vector2(get_tree().root.size)
+	# Only switch when the space below the playfield can hold a full-size pad.
+	var tall := window_size.x > 0.0 and window_size.y / window_size.x >= (Config.H + 700.0) / Config.W
+	var next := (touch_controls_available or touch_controls_forced) and tall
+	if next == portrait_pad:
+		return
+	portrait_pad = next
+	get_tree().root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND if portrait_pad else Window.CONTENT_SCALE_ASPECT_KEEP
+
+
+func _portrait_pad_center_y() -> float:
+	return Config.H + (get_viewport_rect().size.y - Config.H) * 0.5
 
 
 func _should_draw_touch_controls() -> bool:
@@ -2269,14 +2298,24 @@ func _detect_touch_controls_available() -> bool:
 
 
 func _touch_move_center() -> Vector2:
+	if portrait_pad:
+		return Vector2(230.0, _portrait_pad_center_y())
 	return Vector2(124.0, Config.H - 118.0)
 
 
 func _touch_move_hitbox() -> Rect2:
-	return Rect2(_touch_move_center() - Vector2(Config.UI_TOUCH_STICK_HIT * 0.5, Config.UI_TOUCH_STICK_HIT * 0.5), Vector2(Config.UI_TOUCH_STICK_HIT, Config.UI_TOUCH_STICK_HIT))
+	var hit := Config.UI_TOUCH_STICK_HIT * (1.8 if portrait_pad else 1.0)
+	return Rect2(_touch_move_center() - Vector2(hit * 0.5, hit * 0.5), Vector2(hit, hit))
 
 
 func _touch_button_hitboxes() -> Dictionary:
+	if portrait_pad:
+		var cy := _portrait_pad_center_y()
+		return {
+			"shoot": _centered_rect(Vector2(790.0, cy), Config.UI_TOUCH_SHOT_SIZE * 2.2),
+			"bomb": _centered_rect(Vector2(575.0, cy + 165.0), Config.UI_TOUCH_BOMB_SIZE * 2.0),
+			"overdrive": _centered_rect(Vector2(575.0, cy - 165.0), Config.UI_TOUCH_OVERDRIVE_SIZE * 2.0),
+		}
 	return {
 		"shoot": Rect2(Config.W - 174.0, Config.H - 194.0, Config.UI_TOUCH_SHOT_SIZE, Config.UI_TOUCH_SHOT_SIZE),
 		"bomb": Rect2(Config.W - 288.0, Config.H - 148.0, Config.UI_TOUCH_BOMB_SIZE, Config.UI_TOUCH_BOMB_SIZE),
@@ -2284,7 +2323,13 @@ func _touch_button_hitboxes() -> Dictionary:
 	}
 
 
+func _centered_rect(center: Vector2, size: float) -> Rect2:
+	return Rect2(center - Vector2(size, size) * 0.5, Vector2(size, size))
+
+
 func _touch_pause_hitbox() -> Rect2:
+	if portrait_pad:
+		return Rect2(Config.W - 160.0, Config.H + 36.0, Config.UI_TOUCH_PAUSE_SIZE * 1.8, Config.UI_TOUCH_PAUSE_SIZE * 1.8)
 	return Rect2(Config.W - 86.0, Config.HUD + 12.0, Config.UI_TOUCH_PAUSE_SIZE, Config.UI_TOUCH_PAUSE_SIZE)
 
 
