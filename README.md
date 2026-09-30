@@ -217,20 +217,19 @@ mkdir -p dist
 確認用HTTPサーバー:
 
 ```bash
-cd dist
-python3 -m http.server 4177 --bind 127.0.0.1
+localweb dev nova-swarm
 ```
 
-ブラウザで開きます。
+port は LocalWeb が割り当てます。ブラウザで開きます。
 
 ```text
-http://127.0.0.1:4177/
+http://nova-swarm-dev.localhost/
 ```
 
 タッチUIをデスクトップブラウザで強制表示する場合:
 
 ```text
-http://127.0.0.1:4177/?touch=1
+http://nova-swarm-dev.localhost/?touch=1
 ```
 
 ## GitHub Pages
