@@ -30,6 +30,10 @@ var screen_shake := 0.0
 var flash := 0.0
 var hitstop := 0.0
 var stage_banner := 0.0
+var banner_kicker := ""
+var banner_title := ""
+var banner_detail := ""
+var banner_major := true
 var overdrive_zoom := 1.0
 var pending_stage := 0
 var stage_wave := 0
@@ -79,6 +83,11 @@ var run_time := 0.0
 var ai_pace: Array = []
 var _pace_record: Array = []
 var _pending_beat_tick := false
+const BEST_SCORE_PATH := "user://best_score.json"
+var best_score := 0
+var new_best := false
+# Keyboard/pointer focus for the pause and result menus.
+var menu_focus := 0
 var _sync_popup_cooldown := 0.0
 var audio_manager
 
@@ -156,6 +165,7 @@ func _ready() -> void:
 	_setup_overdrive_particles()
 	_setup_render_layers()
 	_setup_spectator()
+	best_score = _load_best_score()
 	audio_manager.play_music("title", 0.25)
 	_parse_web_query()
 	_update_portrait_pad()
@@ -321,8 +331,35 @@ func _load_ai_pace() -> Array:
 	return data.scores
 
 
+func _load_best_score() -> int:
+	if not FileAccess.file_exists(BEST_SCORE_PATH):
+		return 0
+	var file := FileAccess.open(BEST_SCORE_PATH, FileAccess.READ)
+	if file == null:
+		return 0
+	var data: Variant = JSON.parse_string(file.get_as_text())
+	if typeof(data) != TYPE_DICTIONARY:
+		return 0
+	return int(data.get("manual", 0))
+
+
+# Only manual runs set the personal best; AI Demo runs feed the pace curve instead.
+func _record_best_score() -> void:
+	if control_mode != ControlMode.MANUAL or score <= best_score:
+		return
+	best_score = score
+	new_best = true
+	if DisplayServer.get_name() == "headless":
+		return
+	var file := FileAccess.open(BEST_SCORE_PATH, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify({"manual": best_score}))
+
+
 # Keeps the best AI Demo run's score curve so manual runs can race against it.
 func _finish_run() -> void:
+	_record_best_score()
+	menu_focus = 0
 	if control_mode != ControlMode.AI:
 		return
 	_pace_record.append(score)
@@ -424,6 +461,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	_replay_web_title_music_after_input(event)
 	if _handle_title_pointer_input(event):
 		get_viewport().set_input_as_handled()
+	elif _handle_menu_input(event):
+		get_viewport().set_input_as_handled()
 	elif _handle_touch_controls_input(event):
 		get_viewport().set_input_as_handled()
 	elif state == GameState.TITLE and (event.is_action_pressed("move_left") or event.is_action_pressed("move_right")):
@@ -435,16 +474,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("toggle_ai_overlay") and state in [GameState.PLAYING, GameState.PAUSED]:
 		show_ai_overlay = not show_ai_overlay
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("ui_accept") and state in [GameState.TITLE, GameState.GAME_OVER, GameState.VICTORY]:
+	elif event.is_action_pressed("ui_accept") and state == GameState.TITLE:
 		reset()
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("pause_game") and state == GameState.PLAYING:
-		state = GameState.PAUSED
-		audio_manager.set_music_ducked(true)
-		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("pause_game") and state == GameState.PAUSED:
-		state = GameState.PLAYING
-		audio_manager.set_music_ducked(false)
+	elif (event.is_action_pressed("pause_game") or event.is_action_pressed("ui_cancel")) and state in [GameState.PLAYING, GameState.PAUSED]:
+		_set_paused(state == GameState.PLAYING)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("mute_audio"):
 		audio_manager.toggle_mute()
@@ -509,13 +543,10 @@ func _handle_touch_controls_input(event: InputEvent) -> bool:
 
 
 func _begin_touch_control(index: int, position: Vector2) -> bool:
+	if not _should_draw_touch_controls():
+		return false
 	if _touch_pause_hitbox().has_point(position):
-		if state == GameState.PLAYING:
-			state = GameState.PAUSED
-			audio_manager.set_music_ducked(true)
-		elif state == GameState.PAUSED:
-			state = GameState.PLAYING
-			audio_manager.set_music_ducked(false)
+		_set_paused(state == GameState.PLAYING)
 		return true
 	if state != GameState.PLAYING:
 		return false
@@ -555,6 +586,115 @@ func _end_touch_control(index: int) -> bool:
 	return handled
 
 
+func _set_paused(paused: bool) -> void:
+	state = GameState.PAUSED if paused else GameState.PLAYING
+	menu_focus = 0
+	audio_manager.set_music_ducked(paused)
+
+
+func _menu_items() -> Array:
+	match state:
+		GameState.PAUSED:
+			return [{"id": "resume", "label": "RESUME"}, {"id": "restart", "label": "RESTART"}, {"id": "title", "label": "TITLE"}]
+		GameState.GAME_OVER:
+			return [{"id": "restart", "label": "RETRY"}, {"id": "title", "label": "TITLE"}]
+		GameState.VICTORY:
+			return [{"id": "restart", "label": "PLAY AGAIN"}, {"id": "title", "label": "TITLE"}]
+	return []
+
+
+# Menus sit in a centered row on the playfield, or stack in the empty pad area on tall touch screens.
+func _menu_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	var count := _menu_items().size()
+	if count == 0:
+		return rects
+	if portrait_pad:
+		var pad_height := get_viewport_rect().size.y - Config.H
+		var button := Vector2(720.0, 150.0)
+		var gap := 40.0
+		var top := Config.H + (pad_height - (button.y * count + gap * (count - 1))) * 0.5
+		for i in range(count):
+			rects.append(Rect2(Vector2((Config.W - button.x) * 0.5, top + float(i) * (button.y + gap)), button))
+		return rects
+	var size := Vector2(210.0, 60.0)
+	var spacing := 22.0
+	var y := Config.HUD + 212.0
+	if state == GameState.GAME_OVER:
+		y = _results_table_bottom(240.0) + 40.0
+	elif state == GameState.VICTORY:
+		y = _results_table_bottom(296.0) + 32.0
+	var left := (Config.W - (size.x * count + spacing * (count - 1))) * 0.5
+	for i in range(count):
+		rects.append(Rect2(Vector2(left + float(i) * (size.x + spacing), y), size))
+	return rects
+
+
+func _handle_menu_input(event: InputEvent) -> bool:
+	var items := _menu_items()
+	if items.is_empty():
+		return false
+	if event is InputEventMouseMotion:
+		var rects := _menu_rects()
+		for i in range(rects.size()):
+			if rects[i].has_point((event as InputEventMouseMotion).position):
+				menu_focus = i
+		return false
+	var position: Variant = _pointer_press_position(event)
+	if position != null:
+		var rects := _menu_rects()
+		for i in range(rects.size()):
+			if rects[i].has_point(position):
+				menu_focus = i
+				_activate_menu_item(str(items[i].id))
+				return true
+		return false
+	if event.is_action_pressed("move_left") or event.is_action_pressed("move_up"):
+		menu_focus = posmod(menu_focus - 1, items.size())
+		return true
+	if event.is_action_pressed("move_right") or event.is_action_pressed("move_down"):
+		menu_focus = posmod(menu_focus + 1, items.size())
+		return true
+	if event.is_action_pressed("ui_accept"):
+		_activate_menu_item(str(items[clampi(menu_focus, 0, items.size() - 1)].id))
+		return true
+	return false
+
+
+func _activate_menu_item(id: String) -> void:
+	match id:
+		"resume":
+			_set_paused(false)
+		"restart":
+			reset()
+		"title":
+			_return_to_title()
+
+
+func _return_to_title() -> void:
+	state = GameState.TITLE
+	menu_focus = 0
+	highlight_timer = 0.0
+	highlight_strength = 0.0
+	stage_banner = 0.0
+	_end_touch_control(touch_move_index)
+	for action in touch_button_indices.keys():
+		_end_touch_control(int(touch_button_indices[action]))
+	if overdrive_aura:
+		overdrive_aura.emitting = false
+	audio_manager.set_music_overdriven(false)
+	audio_manager.set_music_ducked(false)
+	audio_manager.play_music("title", 0.25)
+
+
+func _show_banner(kicker: String, title: String, duration: float, major := true, detail := "") -> void:
+	banner_kicker = kicker
+	banner_title = title
+	banner_detail = detail
+	banner_major = major
+	stage_banner = duration
+
+
 func _select_title_mode_at(position: Vector2) -> bool:
 	var hitboxes := _title_mode_hitboxes(0.0)
 	if Rect2(hitboxes.manual).has_point(position):
@@ -585,6 +725,8 @@ func reset() -> void:
 	ai_pilot.reset()
 	ai_pilot.record_debug = control_mode == ControlMode.AI
 	run_time = 0.0
+	new_best = false
+	menu_focus = 0
 	_pace_record = []
 	highlight_timer = 0.0
 	highlight_strength = 0.0
@@ -602,7 +744,12 @@ func load_stage(index: int) -> void:
 	wave_transition_timer = 0.0
 	stage_transition_timer = 0.0
 	stage_timer = 0.0
-	stage_banner = 1.65
+	var stage_count := Config.STAGES.size()
+	var kicker := "FINAL STAGE" if index == stage_count - 1 else "STAGE " + str(index + 1) + " / " + str(stage_count)
+	var hint := ""
+	if index == 0 and control_mode == ControlMode.MANUAL and not _touch_controls_enabled():
+		hint = "MOVE WASD   SHOT SPACE   BOMB B   DRIVE E   PAUSE P"
+	_show_banner(kicker, str(Config.STAGES[index].name), 2.2 if hint != "" else 1.65, true, hint)
 	overdrive_zoom = 1.0
 	projectiles.clear()
 	explosions.clear()
@@ -641,7 +788,7 @@ func _start_wave(next_wave: int) -> void:
 	var st: Dictionary = Config.STAGES[stage]
 	swarm.load_stage(st, Config.ENEMY_STATS, difficulty, stage_wave)
 	network.build(swarm.enemies)
-	stage_banner = 0.9
+	_show_banner("", "WAVE " + str(next_wave + 1) + " / " + str(int(st.get("waves", 1))), 0.9, false)
 	audio_manager.play_sfx("wave")
 
 
@@ -1289,14 +1436,20 @@ func _check_stage_end() -> void:
 			return
 		score += 1200 + stage * 550 + (900 if player.no_miss_stage else 0)
 		_record_stage_result()
+		var rewards: Array[String] = []
+		if player.bombs < 5:
+			rewards.append("BOMB +1")
 		player.bombs = mini(5, player.bombs + 1)
 		player.shield = player.shield_max
+		rewards.append("SHIELD FULL")
 		if player.lives <= 2:
 			player.lives += 1
+			rewards.append("LIFE +1")
 		audio_manager.play_sfx("stage_clear")
 		pending_stage = stage + 1
 		stage_transition_timer = 0.95
-		stage_banner = 0.95
+		rewards.push_front("RANK " + str(stage_results[-1].rank))
+		_show_banner(str(Config.STAGES[stage].name), "STAGE CLEAR", 0.95, true, "   ".join(rewards))
 
 
 func _start_stage_metrics() -> void:
@@ -1429,7 +1582,7 @@ func draw_ui_pass(canvas: CanvasItem) -> void:
 	if fx and state in [GameState.PLAYING, GameState.PAUSED]:
 		fx.draw_popups(canvas, display_font if display_font else font, _world_xform)
 	if state in [GameState.PLAYING, GameState.PAUSED]:
-		hud.draw_hud(_c, font, display_font, score, stage, stage_wave, int(Config.STAGES[stage].get("waves", 1)), player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), player.chip_levels, player.chip_progress, audio_manager.muted, hud_chassis_texture, status_icons_texture)
+		hud.draw_hud(_c, font, display_font, score, stage, stage_wave, int(Config.STAGES[stage].get("waves", 1)), player.lives, player.bombs, player.shield, player.combo, boss_controller.boss, player.resonance, player.overdrive_timer, player.get_overdrive_duration(), player.chip_levels, player.chip_progress, audio_manager.muted, hud_chassis_texture, status_icons_texture, beat_clock.pulse())
 	if state in [GameState.PLAYING, GameState.PAUSED]:
 		_draw_beat_pips()
 		_draw_highlight_frame()
@@ -1437,15 +1590,17 @@ func draw_ui_pass(canvas: CanvasItem) -> void:
 			_draw_ai_readout()
 		else:
 			_draw_ai_pace()
+			_draw_drive_ready_prompt()
 	if flash > 0.0 and not reduced_motion:
 		_c.draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.34))
 	if stage_banner > 0.0 and state == GameState.PLAYING:
-		var alpha := minf(1.0, stage_banner)
-		_draw_stage_banner(Config.STAGES[stage].name, Config.HUD + 118.0, alpha)
+		_draw_stage_banner(minf(1.0, stage_banner * 2.5))
 	if state != GameState.PLAYING:
 		_draw_overlay()
 	if portrait_pad:
 		_draw_portrait_pad_panel()
+		if state != GameState.PLAYING:
+			_draw_portrait_pad_contents()
 	if _should_draw_touch_controls():
 		_draw_touch_controls()
 	_c = self
@@ -2059,15 +2214,11 @@ func _draw_status_icon(index: int, rect: Rect2, tint := Color.WHITE) -> void:
 
 
 func _draw_infection_overlay() -> void:
-	_c.draw_rect(Rect2(0, 0, Config.W, Config.H), Color(0.0, 0.025, 0.07, 0.78))
-	_c.draw_rect(Rect2(0, 0, Config.W, Config.H), Color(Config.UI_CYAN, 0.035))
+	_c.draw_rect(Rect2(0, 0, Config.W, Config.H), Color(0.0, 0.025, 0.07, 0.8))
+	_c.draw_rect(Rect2(0, 0, Config.W, Config.H), Color(Config.UI_CYAN, 0.03))
 	for i in range(12):
 		var y := 18.0 + float(i) * 58.0
-		var alpha := 0.08 + float(i % 3) * 0.025
-		_c.draw_line(Vector2(0, y), Vector2(Config.W, y), Color(Config.UI_CYAN, alpha), 1.0)
-	for i in range(8):
-		var x := fmod(stage_timer * 18.0 + float(i) * 137.0, Config.W)
-		_c.draw_line(Vector2(x, Config.HUD), Vector2(x - 180.0, Config.H), Color(Config.UI_AMBER, 0.045), 1.0)
+		_c.draw_line(Vector2(0, y), Vector2(Config.W, y), Color(Config.UI_CYAN, 0.05 + float(i % 3) * 0.02), 1.0)
 
 
 func _draw_terminal_panel(rect: Rect2, accent: Color, fill_alpha := Config.UI_PANEL_ALPHA, selected := false) -> void:
@@ -2086,68 +2237,120 @@ func _draw_chrome_icon(key: String, rect: Rect2, tint := Color.WHITE) -> void:
 			_c.draw_rect(Rect2(rect.position + Vector2(rect.size.x * offset, rect.size.y * 0.15), rect.size * Vector2(0.13, 0.7)), tint)
 
 
-func _draw_core_glyph(center: Vector2, radius: float, accent: Color, active := false) -> void:
-	var pulse := 0.5 + sin(Time.get_ticks_msec() * 0.009) * 0.5
-	var size := radius * 1.7
-	var rect := Rect2(center.x - size * 0.5, center.y - size * 0.5, size, size)
-	if active:
-		_draw_status_icon(3, rect, Color(1, 1, 1, 0.46 + pulse * 0.14))
-	else:
-		_draw_chrome_icon("pause", rect, Color(Config.UI_CYAN, 0.78))
-
-
 func _draw_overlay() -> void:
-	if state == GameState.TITLE and title_background_texture:
-		_c.draw_texture_rect(title_background_texture, Rect2(0, 0, Config.W, Config.H), false, Color.WHITE)
-		_draw_title_wordmark()
-		_c.draw_rect(Rect2(0, Config.H - 118.0, Config.W, 118.0), Color(0.01, 0.035, 0.075, 0.58))
-		_draw_title_mode_select(0.0)
-		_draw_title_start_button()
+	if state == GameState.TITLE:
+		_draw_title_screen()
 		return
 	_draw_infection_overlay()
-	var title := "NOVA SWARM"
-	if state == GameState.PAUSED:
-		title = "PAUSED"
-	elif state == GameState.VICTORY:
-		title = "MISSION CLEAR"
-	elif state == GameState.GAME_OVER:
-		title = "GAME OVER"
-	var sub := "P TO RESUME" if state == GameState.PAUSED else "ENTER TO DEPLOY"
-	if state == GameState.VICTORY and ending_texture:
-		_draw_terminal_panel(Rect2(118, Config.HUD + 48, 724, 214), Config.UI_CYAN, 0.58)
-		_c.draw_texture_rect(ending_texture, Rect2(146, Config.HUD + 56, 668, 198), false)
-		_draw_arcade_title(title, Config.HUD + 300.0, 44, Config.UI_TEXT)
-		hud.draw_centered(_c, font, "FINAL SCORE " + str(score).pad_zeros(7), Config.HUD + 326, 22, Config.UI_AMBER)
-		_draw_results_table(Config.HUD + 372.0)
-		hud.draw_centered(_c, font, _control_mode_label(control_mode) + " / ENTER TO REDEPLOY", Config.HUD + 620, 18, Config.UI_CYAN)
+	match state:
+		GameState.PAUSED:
+			_draw_arcade_title("PAUSED", Config.HUD + 130.0, 52, Config.UI_TEXT)
+			var status := "STAGE " + str(stage + 1) + "  " + str(Config.STAGES[stage].name) + "     SCORE " + str(score).pad_zeros(7)
+			hud.draw_centered(_c, font, status, Config.HUD + 176.0, 16, Color(Config.UI_TEXT, 0.78))
+			_draw_controls_panel(Config.HUD + 306.0)
+		GameState.GAME_OVER:
+			_draw_arcade_title("GAME OVER", 132.0, 54, Config.UI_TEXT)
+			_draw_score_summary(182.0)
+			hud.draw_centered(_c, font, "REACHED STAGE " + str(stage + 1) + "  " + str(Config.STAGES[stage].name), 212.0, 14, Color(Config.UI_TEXT, 0.7))
+			_draw_results_table(240.0)
+		GameState.VICTORY:
+			if ending_texture:
+				var art := Rect2(210.0, 18.0, 540.0, 160.0)
+				_draw_terminal_panel(art.grow(10.0), Config.UI_CYAN, 0.58)
+				_c.draw_texture_rect(ending_texture, art, false)
+			_draw_arcade_title("MISSION CLEAR", 232.0, 42, Config.UI_TEXT)
+			_draw_score_summary(272.0)
+			_draw_results_table(296.0)
+	if not portrait_pad:
+		_draw_menu()
+
+
+# Final score, the saved manual best, and a NEW BEST mark when this run beat it.
+func _draw_score_summary(y: float) -> void:
+	var score_text := "SCORE  " + str(score).pad_zeros(7)
+	if control_mode == ControlMode.AI:
+		hud.draw_centered(_c, display_font, score_text + "   /   AI DEMO", y, 24, Config.UI_AMBER)
+		return
+	var best_text := "NEW BEST" if new_best else "BEST  " + str(best_score).pad_zeros(7)
+	var score_size := display_font.get_string_size(score_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24)
+	var best_size := font.get_string_size(best_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
+	var gap := 28.0
+	var x := (Config.W - score_size.x - gap - best_size.x) * 0.5
+	_c.draw_string(display_font, Vector2(x, y), score_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Config.UI_AMBER)
+	var best_pos := Vector2(x + score_size.x + gap, y - 3.0)
+	if new_best:
+		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
+		var badge := Rect2(best_pos + Vector2(-8.0, -16.0), Vector2(best_size.x + 16.0, 22.0))
+		_c.draw_rect(badge, Color(Config.UI_AMBER, 0.18 + 0.14 * pulse))
+		_c.draw_rect(badge, Color(Config.UI_AMBER, 0.8), false, 1.0)
+		_c.draw_string(font, best_pos, best_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color.WHITE)
 	else:
-		_draw_core_glyph(Vector2(Config.W * 0.5, Config.HUD + 116.0), 38.0, Config.UI_CYAN, state == GameState.GAME_OVER)
-		_draw_arcade_title(title, Config.HUD + 216.0, 58, Config.UI_TEXT)
-		hud.draw_centered(_c, font, sub, Config.HUD + 292, 22, Config.UI_CYAN)
-		if state == GameState.PAUSED:
-			_draw_controls_panel(Config.HUD + 332.0)
-		elif state == GameState.GAME_OVER and not stage_results.is_empty():
-			_draw_results_table(Config.HUD + 334.0)
-		else:
-			hud.draw_centered(_c, font, "CORE SIGNAL LOST / REBUILD AND REDEPLOY", Config.HUD + 340, 17, Color(Config.UI_TEXT, 0.82))
+		_c.draw_string(font, best_pos, best_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(Config.UI_TEXT, 0.62))
 
 
+func _draw_menu() -> void:
+	var items := _menu_items()
+	var rects := _menu_rects()
+	for i in range(items.size()):
+		_draw_menu_button(rects[i], str(items[i].label), i == menu_focus, i == 0)
+	if portrait_pad or _touch_controls_enabled():
+		return
+	var hint := "ARROWS SELECT     ENTER CONFIRM"
+	if state == GameState.PAUSED:
+		hint += "     P / ESC RESUME"
+	hud.draw_centered(_c, font, hint, rects[0].end.y + 30.0 if not rects.is_empty() else Config.H - 16.0, 11, Color(Config.UI_TEXT, 0.5))
+
+
+func _draw_menu_button(rect: Rect2, label: String, focused: bool, primary: bool) -> void:
+	_draw_terminal_panel(rect, Config.UI_AMBER if primary else Config.UI_CYAN, 1.0 if focused else 0.6, focused)
+	if focused:
+		_c.draw_rect(rect.grow(-10.0), Color(Config.UI_CYAN, 0.08))
+	var size := int(clampf(rect.size.y * 0.36, 16.0, 52.0))
+	var color := Color.WHITE if focused else Color(Config.UI_TEXT, 0.66)
+	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.5 + float(size) * 0.36, size, color)
+
+
+# Shows the input the player actually has: touch buttons on touch screens, keys otherwise.
 func _draw_controls_panel(y: float) -> void:
-	var rect := Rect2(260.0, y, 440.0, 202.0)
+	var rect := Rect2(250.0, y, 460.0, 196.0)
 	_draw_terminal_panel(rect, Config.UI_CYAN, 0.78)
-	_c.draw_string(font, rect.position + Vector2(34.0, 36.0), "CONTROL CHANNELS", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Config.UI_CYAN)
+	var touch := _touch_controls_enabled()
 	var rows := [
-		["MOVE", "WASD / ARROWS"],
-		["SHOT", "SPACE"],
-		["BOMB", "B / SHIFT"],
-		["OVERDRIVE", "E"],
-		["PAUSE", "P"],
-		["MUTE", "M"],
+		["MOVE", "LEFT STICK" if touch else "WASD / ARROWS"],
+		["SHOT", "HOLD SHOT" if touch else "SPACE (HOLD)"],
+		["BOMB", "BOMB  /  CLEARS BULLETS" if touch else "B / SHIFT  /  CLEARS BULLETS"],
+		["DRIVE", "DRIVE WHEN FULL" if touch else "E WHEN FULL  /  ON BEAT = SYNC"],
+		["PAUSE", "PAUSE" if touch else "P / ESC"],
+		["MUTE", "-" if touch else "M"],
 	]
+	if touch:
+		rows.pop_back()
 	for i in range(rows.size()):
-		var row_y := y + 66.0 + float(i) * 22.0
-		_c.draw_string(font, Vector2(rect.position.x + 34.0, row_y), rows[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Config.UI_AMBER if i == 3 else Config.UI_CYAN)
-		_c.draw_string(font, Vector2(rect.position.x + 184.0, row_y), rows[i][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(Config.UI_TEXT, 0.82))
+		var row_y := y + 42.0 + float(i) * 26.0
+		_c.draw_string(font, Vector2(rect.position.x + 34.0, row_y), rows[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER if rows[i][0] == "DRIVE" else Config.UI_CYAN)
+		_c.draw_string(font, Vector2(rect.position.x + 130.0, row_y), rows[i][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(Config.UI_TEXT, 0.84))
+
+
+func _draw_title_screen() -> void:
+	if title_background_texture:
+		_c.draw_texture_rect(title_background_texture, Rect2(0, 0, Config.W, Config.H), false, Color.WHITE)
+	_draw_title_wordmark()
+	if best_score > 0:
+		hud.draw_centered(_c, font, "BEST  " + str(best_score).pad_zeros(7), 262.0, 16, Color(Config.UI_TEXT, 0.86))
+	if portrait_pad:
+		return
+	_c.draw_rect(Rect2(0, Config.H - 124.0, Config.W, 124.0), Color(0.01, 0.035, 0.075, 0.66))
+	_draw_title_mode_select()
+	_draw_title_start_button()
+	var hint := "TAP AI DEMO AGAIN TO CHANGE ITS STYLE" if touch_controls_available else "LEFT / RIGHT  MODE      UP / DOWN  AI STYLE      ENTER  DEPLOY"
+	hud.draw_centered(_c, font, hint, Config.H - 10.0, 11, Color(Config.UI_TEXT, 0.56))
+
+
+func _draw_portrait_title_controls() -> void:
+	_draw_title_mode_select()
+	_draw_title_start_button()
+	var start := _title_start_hitbox()
+	hud.draw_centered(_c, font, "TAP AI DEMO AGAIN TO CHANGE ITS STYLE", start.end.y + 80.0, 26, Color(Config.UI_TEXT, 0.56))
 
 
 func _draw_title_wordmark() -> void:
@@ -2176,29 +2379,49 @@ func _draw_centered_in_width(text: String, x: float, width: float, y: float, siz
 	_c.draw_string(label_font, Vector2(x + (width - text_size.x) / 2.0, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fitted_size, color)
 
 
+# Numbers are right-aligned so digits line up; the panel grows with the number of cleared stages.
 func _draw_results_table(y: float) -> void:
-	var x := 128.0
-	var row_h := 31.0
-	var headers := ["STAGE", "SCORE", "CHAIN", "DMG", "BOMB", "RANK"]
-	var cols := [x, x + 230.0, x + 382.0, x + 500.0, x + 590.0, x + 704.0]
-	_draw_terminal_panel(Rect2(x - 24.0, y - 28.0, 760.0, row_h * 6.0 + 60.0), Config.UI_RED, 0.74)
-	for i in range(headers.size()):
-		_c.draw_string(font, Vector2(cols[i], y), headers[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Config.UI_TEXT_DIM)
+	if stage_results.is_empty():
+		return
+	var panel := Rect2(130.0, y, 700.0, _results_table_bottom(y) - y)
+	_draw_terminal_panel(panel, Config.UI_CYAN, 0.74)
+	var left := panel.position.x + 36.0
+	var header_y := y + 34.0
+	var columns := [
+		{"label": "STAGE", "x": left, "align": HORIZONTAL_ALIGNMENT_LEFT},
+		{"label": "SCORE", "x": left + 330.0, "align": HORIZONTAL_ALIGNMENT_RIGHT},
+		{"label": "CHAIN", "x": left + 408.0, "align": HORIZONTAL_ALIGNMENT_RIGHT},
+		{"label": "HITS", "x": left + 476.0, "align": HORIZONTAL_ALIGNMENT_RIGHT},
+		{"label": "BOMBS", "x": left + 552.0, "align": HORIZONTAL_ALIGNMENT_RIGHT},
+		{"label": "RANK", "x": left + 624.0, "align": HORIZONTAL_ALIGNMENT_RIGHT},
+	]
+	for column in columns:
+		_draw_table_cell(str(column.label), float(column.x), header_y, 12, Config.UI_TEXT_DIM, int(column.align))
 	for r in range(stage_results.size()):
 		var result: Dictionary = stage_results[r]
-		var row_y := y + 30.0 + float(r) * row_h
-		var rank_color := _rank_color(str(result.rank))
+		var row_y := header_y + 28.0 + float(r) * 28.0
 		if r % 2 == 0:
-			_c.draw_rect(Rect2(x - 10.0, row_y - 16.0, 720.0, 23.0), Color(Config.UI_RED, 0.07))
-		_c.draw_string(font, Vector2(cols[0], row_y), str(result.name), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_TEXT)
-		_c.draw_string(font, Vector2(cols[1], row_y), str(result.score).pad_zeros(5), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_CYAN)
-		_c.draw_string(font, Vector2(cols[2], row_y), str(result.chain), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
-		_c.draw_string(font, Vector2(cols[3], row_y), str(result.damage), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#ff9aa8"))
-		_c.draw_string(font, Vector2(cols[4], row_y), str(result.bombs), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
-		_c.draw_string(font, Vector2(cols[5], row_y), str(result.rank), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, rank_color)
-	if not stage_results.is_empty():
-		var last_result: Dictionary = stage_results[stage_results.size() - 1]
-		_c.draw_string(font, Vector2(x, y + row_h * 6.0 + 24.0), str(last_result.get("tip", "NEXT: AIM FOR SSS")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER)
+			_c.draw_rect(Rect2(left - 12.0, row_y - 18.0, 652.0, 25.0), Color(Config.UI_CYAN, 0.06))
+		var values := [str(result.name), str(result.score), str(result.chain), str(result.damage), str(result.bombs), str(result.rank)]
+		var colors := [Config.UI_TEXT, Config.UI_CYAN, Config.UI_AMBER, Color("#ff9aa8") if int(result.damage) > 0 else Color(Config.UI_TEXT, 0.6), Config.UI_AMBER if int(result.bombs) > 0 else Color(Config.UI_TEXT, 0.6), _rank_color(str(result.rank))]
+		for c in range(columns.size()):
+			_draw_table_cell(values[c], float(columns[c].x), row_y, 18 if c == 5 else 15, colors[c], int(columns[c].align))
+	var last_result: Dictionary = stage_results[stage_results.size() - 1]
+	var tip := str(last_result.get("tip", ""))
+	if tip != "":
+		_c.draw_string(font, Vector2(left, panel.end.y - 22.0), tip, HORIZONTAL_ALIGNMENT_LEFT, 620.0, 14, Config.UI_AMBER)
+
+
+func _results_table_bottom(y: float) -> float:
+	if stage_results.is_empty():
+		return y
+	return y + 92.0 + 28.0 * float(stage_results.size())
+
+
+func _draw_table_cell(text: String, x: float, y: float, size: int, color: Color, align: int) -> void:
+	if align == HORIZONTAL_ALIGNMENT_RIGHT:
+		x -= font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	_c.draw_string(font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 
 func _rank_color(rank: String) -> Color:
@@ -2211,20 +2434,6 @@ func _rank_color(rank: String) -> Color:
 	if rank == "B":
 		return Config.UI_GREEN
 	return Color(Config.UI_TEXT, 0.72)
-
-
-func _draw_control_mode_badge() -> void:
-	if state != GameState.PLAYING or control_mode != ControlMode.AI:
-		return
-	var label := _control_mode_label(control_mode)
-	var color := Config.UI_AMBER if control_mode == ControlMode.AI else Config.UI_CYAN
-	var x := 858.0
-	var y := 42.0
-	var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
-	var rect := Rect2(x - 9.0, y - 15.0, text_size.x + 18.0, 20.0)
-	_c.draw_rect(rect, Color(Config.UI_PANEL_DARK, 0.52))
-	_c.draw_rect(rect, Color(color, 0.18), false, 1.0)
-	_c.draw_string(font, Vector2(x, y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
 
 
 func _draw_touch_controls() -> void:
@@ -2242,19 +2451,42 @@ func _draw_touch_controls() -> void:
 	_c.draw_arc(move_center + stick_offset, knob, 0.0, TAU, 32, active_color, 2.0)
 
 	var button_hitboxes := _touch_button_hitboxes()
+	var bomb_ready: bool = player.bombs > 0
+	var drive_active: bool = player.is_overdrive_active()
+	var drive_ready: bool = player.can_overdrive()
+	var drive_ratio: float = clampf(player.overdrive_timer / player.get_overdrive_duration() if drive_active else player.resonance / 100.0, 0.0, 1.0)
 	_draw_touch_button(Rect2(button_hitboxes.shoot), "SHOT", "shot", Config.UI_CYAN, bool(touch_button_pressed.shoot))
-	_draw_touch_button(Rect2(button_hitboxes.bomb), "BOMB", "bomb", Config.UI_AMBER, bool(touch_button_pressed.bomb))
-	_draw_touch_button(Rect2(button_hitboxes.overdrive), "OVER", "overdrive", Config.UI_AMBER, touch_overdrive_queued)
+	_draw_touch_button(Rect2(button_hitboxes.bomb), "BOMB", "bomb", Config.UI_AMBER, bool(touch_button_pressed.bomb), bomb_ready, str(player.bombs))
+	_draw_touch_button(Rect2(button_hitboxes.overdrive), "DRIVE", "overdrive", Config.UI_AMBER, touch_overdrive_queued or drive_active, drive_ready or drive_active, "", drive_ratio, drive_ready)
 	_draw_touch_button(_touch_pause_hitbox(), "PAUSE", "pause", Color(Config.UI_TEXT, 0.78), state == GameState.PAUSED)
 
 
-func _draw_touch_button(rect: Rect2, label: String, icon_key: String, color: Color, active: bool) -> void:
+# Touch buttons carry their own state: a bomb count badge, and a Drive ring that fills with the gauge and glows when ready.
+func _draw_touch_button(rect: Rect2, label: String, icon_key: String, color: Color, active: bool, available := true, badge := "", gauge := -1.0, ready := false) -> void:
+	var center := rect.get_center()
+	var radius := rect.size.x * 0.5
+	var scale := 1.8 if portrait_pad else 1.0
 	var fill_alpha := 0.34 if active else 0.16
-	_c.draw_circle(rect.get_center(), rect.size.x * 0.5, Color(Config.UI_PANEL_DARK, 1.0 if reduced_transparency else 0.36))
-	_c.draw_circle(rect.get_center(), rect.size.x * 0.5 - 6.0, Color(color, fill_alpha))
-	_c.draw_arc(rect.get_center(), rect.size.x * 0.5 - 4.0, 0.0, TAU, 40, Color(color, 0.78 if active else 0.46), 3.0 if active else 2.0)
-	_draw_chrome_icon(icon_key, Rect2(rect.get_center().x - rect.size.x * 0.24, rect.get_center().y - rect.size.y * 0.3, rect.size.x * 0.48, rect.size.y * 0.48), Color(1, 1, 1, 0.82))
-	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.74, 26 if portrait_pad else 12, Color(0.98, 1.0, 1.0, 0.86))
+	if ready:
+		fill_alpha = 0.22 + 0.2 * beat_clock.pulse()
+	var alpha := 1.0 if available else 0.45
+	_c.draw_circle(center, radius, Color(Config.UI_PANEL_DARK, 1.0 if reduced_transparency else 0.36))
+	_c.draw_circle(center, radius - 6.0, Color(color, fill_alpha * alpha))
+	if gauge >= 0.0:
+		_c.draw_arc(center, radius - 4.0, 0.0, TAU, 40, Color(color, 0.18), 3.0 * scale)
+		if gauge > 0.0:
+			_c.draw_arc(center, radius - 4.0, -PI * 0.5, -PI * 0.5 + TAU * gauge, 40, Color(color, 0.95 if ready else 0.72), 3.0 * scale)
+	else:
+		_c.draw_arc(center, radius - 4.0, 0.0, TAU, 40, Color(color, (0.78 if active else 0.46) * alpha), (3.0 if active else 2.0) * scale)
+	_draw_chrome_icon(icon_key, Rect2(center.x - rect.size.x * 0.24, center.y - rect.size.y * 0.3, rect.size.x * 0.48, rect.size.y * 0.48), Color(1, 1, 1, 0.82 * alpha))
+	var label_text := "READY" if ready else label
+	_draw_centered_in_width(label_text, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.74, int(12.0 * (2.1 if portrait_pad else 1.0)), Color(1.0, 0.92, 0.7, 1.0) if ready else Color(0.98, 1.0, 1.0, 0.86 * alpha))
+	if badge != "":
+		var badge_center := center + Vector2(radius * 0.68, -radius * 0.68)
+		var badge_radius := 13.0 * scale
+		_c.draw_circle(badge_center, badge_radius, Color(Config.UI_PANEL_DARK, 0.92))
+		_c.draw_arc(badge_center, badge_radius, 0.0, TAU, 24, Color(color, 0.9 * alpha), 2.0 * scale)
+		_draw_centered_in_width(badge, badge_center.x - badge_radius, badge_radius * 2.0, badge_center.y + 6.0 * scale, int(15.0 * scale), Color(1, 1, 1, alpha))
 
 
 # The pad fills the canvas below the playfield and hides world sprites that drift past its bottom edge.
@@ -2262,6 +2494,14 @@ func _draw_portrait_pad_panel() -> void:
 	var panel := Rect2(0.0, Config.H, Config.W, get_viewport_rect().size.y - Config.H)
 	_c.draw_rect(panel, Config.UI_PANEL_DARK)
 	_c.draw_line(panel.position, panel.position + Vector2(Config.W, 0.0), Color(Config.UI_CYAN, 0.36), 2.0)
+
+
+# Menus drawn in the pad area are sized for thumbs; the playfield overlay above keeps the details.
+func _draw_portrait_pad_contents() -> void:
+	if state == GameState.TITLE:
+		_draw_portrait_title_controls()
+	else:
+		_draw_menu()
 
 
 func _update_portrait_pad() -> void:
@@ -2279,8 +2519,11 @@ func _portrait_pad_center_y() -> float:
 	return Config.H + (get_viewport_rect().size.y - Config.H) * 0.5
 
 
+# While paused, the portrait pad hands its space to the menu; landscape keeps only the pause button live.
 func _should_draw_touch_controls() -> bool:
-	return _touch_controls_enabled() and state in [GameState.PLAYING, GameState.PAUSED]
+	if not _touch_controls_enabled():
+		return false
+	return state == GameState.PLAYING or (state == GameState.PAUSED and not portrait_pad)
 
 
 func _touch_controls_enabled() -> bool:
@@ -2333,51 +2576,51 @@ func _touch_pause_hitbox() -> Rect2:
 	return Rect2(Config.W - 86.0, Config.HUD + 12.0, Config.UI_TOUCH_PAUSE_SIZE, Config.UI_TOUCH_PAUSE_SIZE)
 
 
-func _draw_title_mode_select(y: float) -> void:
-	var hitboxes := _title_mode_hitboxes(y)
-	_draw_title_control(Rect2(hitboxes.manual), selected_control_mode == ControlMode.MANUAL, "MANUAL")
-	_draw_title_control(Rect2(hitboxes.ai), selected_control_mode == ControlMode.AI, "AI DEMO")
+func _draw_title_mode_select() -> void:
+	var hitboxes := _title_mode_hitboxes()
+	var manual_rect := Rect2(hitboxes.manual)
 	var ai_rect := Rect2(hitboxes.ai)
-	var personality_color := Config.UI_AMBER if selected_control_mode == ControlMode.AI else Color(Config.UI_TEXT, 0.45)
-	_draw_centered_in_width("< " + str(ai_pilot.personality).to_upper() + " >", ai_rect.position.x, ai_rect.size.x, ai_rect.position.y + 19.0, 10, personality_color)
+	var ai_selected := selected_control_mode == ControlMode.AI
+	_draw_title_control(manual_rect, not ai_selected, "MANUAL", "YOU FLY")
+	_draw_title_control(ai_rect, ai_selected, "AI DEMO", "< " + str(ai_pilot.personality).to_upper() + " >" if ai_selected else "WATCH THE AI")
 
 
 func _draw_title_start_button() -> void:
 	var rect := _title_start_hitbox()
 	_draw_terminal_panel(rect, Config.UI_CYAN, 1.0, true)
-	_draw_centered_in_width("DEPLOY", rect.position.x, rect.size.x, rect.position.y + 51.0, 25, Color.WHITE)
+	var size := int(rect.size.y * 0.32)
+	_draw_centered_in_width("DEPLOY", rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.5 + float(size) * 0.36, size, Color.WHITE)
 
 
 func _title_start_hitbox() -> Rect2:
+	if portrait_pad:
+		return Rect2(70.0, _portrait_title_top() + 260.0, 820.0, 190.0)
 	return Rect2(500.0, 614.0, 392.0, 80.0)
 
 
-func _draw_title_control(rect: Rect2, selected: bool, label: String) -> void:
+func _draw_title_control(rect: Rect2, selected: bool, label: String, caption: String) -> void:
+	var scale := rect.size.y / 60.0
 	_draw_terminal_panel(rect, Config.UI_CYAN, 1.0 if selected else 0.62, selected)
-	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + 39.0, 16, Color.WHITE if selected else Color(Config.UI_TEXT, 0.62))
+	_draw_centered_in_width(caption, rect.position.x, rect.size.x, rect.position.y + 20.0 * scale, int(10.0 * scale), Config.UI_AMBER if selected else Color(Config.UI_TEXT, 0.5))
+	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + 41.0 * scale, int(16.0 * scale), Color.WHITE if selected else Color(Config.UI_TEXT, 0.62))
 
 
-func _title_mode_hitboxes(y: float) -> Dictionary:
+func _title_mode_hitboxes(_y := 0.0) -> Dictionary:
+	if portrait_pad:
+		var top := _portrait_title_top()
+		return {
+			"manual": Rect2(70.0, top, 400.0, 180.0),
+			"ai": Rect2(490.0, top, 400.0, 180.0),
+		}
 	return {
 		"manual": Rect2(70.0, 626.0, 196.0, 60.0),
 		"ai": Rect2(264.0, 626.0, 196.0, 60.0),
 	}
 
 
-func _title_mode_text_positions(y: float, manual_text: String, ai_text: String) -> Dictionary:
-	var gap := 84.0
-	var manual_size := font.get_string_size(manual_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
-	var ai_size := font.get_string_size(ai_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
-	var total_width := manual_size.x + gap + ai_size.x
-	var start_x := (Config.W - total_width) / 2.0
-	return {
-		"manual": Vector2(start_x, y),
-		"ai": Vector2(start_x + manual_size.x + gap, y),
-	}
-
-
-func _control_mode_label(mode: int) -> String:
-	return "AI DEMO" if mode == ControlMode.AI else "MANUAL"
+func _portrait_title_top() -> float:
+	var pad_height := get_viewport_rect().size.y - Config.H
+	return Config.H + maxf(60.0, (pad_height - 560.0) * 0.4)
 
 
 func _draw_highlight_frame() -> void:
@@ -2415,10 +2658,10 @@ func _draw_ai_pace() -> void:
 		return
 	var delta := score - pace
 	var text := ("+" if delta >= 0 else "") + str(delta)
-	var rect := Rect2(Config.W - 172.0, Config.HUD + 10.0, 160.0, 24.0)
+	var rect := Rect2(12.0, Config.HUD + (40.0 if boss_controller.is_alive() else 10.0), 150.0, 24.0)
 	_c.draw_rect(rect, Color(Config.UI_PANEL_DARK, 0.55))
 	_c.draw_string(font, rect.position + Vector2(8, 16), "VS AI", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(Config.UI_TEXT, 0.7))
-	draw_text_right(text, Rect2(rect.position.x + 50.0, rect.position.y + 3.0, 102.0, 18.0), 14, Config.UI_GREEN if delta >= 0 else Config.UI_RED)
+	draw_text_right(text, Rect2(rect.position.x + 50.0, rect.position.y + 3.0, 92.0, 18.0), 14, Config.UI_GREEN if delta >= 0 else Config.UI_RED)
 
 
 func draw_text_right(text: String, rect: Rect2, size: int, color: Color) -> void:
@@ -2432,22 +2675,41 @@ func _draw_beat_pips() -> void:
 	var on_beat: bool = beat_clock.is_on_beat()
 	var pulse: float = beat_clock.pulse()
 	for i in range(4):
-		var rect := Rect2(84.0 + float(i) * 24.0, 65.0, 20.0, 3.0)
+		var rect := Rect2(88.0 + float(i) * 37.0, 64.0, 33.0, 3.0)
 		var active := i == bar_index
 		var color := Color("#ffe27a") if active and on_beat else Config.UI_CYAN
 		_c.draw_rect(rect, Color(color, 0.85 * pulse + 0.15 if active else 0.18))
 
 
-func _draw_stage_banner(text: String, y: float, alpha: float) -> void:
-	var size := 30
+# Major banners (stage start/clear) sit in the open lane between the formation and the ship; wave calls are a light caption.
+func _draw_stage_banner(alpha: float) -> void:
 	var banner_font := display_font if display_font else font
-	var text_size := banner_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
-	var x := (Config.W - text_size.x) / 2.0
-	var panel := Rect2((Config.W - 520.0) * 0.5, y - 48.0, 520.0, 72.0)
+	var y := 452.0
+	if not banner_major:
+		hud.draw_centered(_c, banner_font, banner_title, y, 22, Color(Config.UI_TEXT, 0.8 * alpha))
+		return
+	var panel := Rect2((Config.W - 480.0) * 0.5, y - 62.0, 480.0, 86.0)
 	if title_controls_texture:
-		_c.draw_texture_rect(title_controls_texture, panel, false, Color(1, 1, 1, alpha * 0.84))
-	_c.draw_string(banner_font, Vector2(x + 2.0, y + 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.62 * alpha))
-	_c.draw_string(banner_font, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Config.UI_TEXT, alpha))
+		_c.draw_texture_rect(title_controls_texture, panel, false, Color(1, 1, 1, alpha * 0.8))
+	hud.draw_centered(_c, font, banner_kicker, y - 30.0, 13, Color(Config.UI_CYAN, alpha))
+	hud.draw_centered(_c, banner_font, banner_title, y + 2.0, 30, Color(0, 0, 0, 0.62 * alpha))
+	hud.draw_centered(_c, banner_font, banner_title, y, 30, Color(Config.UI_TEXT, alpha))
+	if banner_detail != "":
+		hud.draw_centered(_c, font, banner_detail, y + 50.0, 14, Color(Config.UI_AMBER, 0.9 * alpha))
+
+
+# A full gauge is easy to miss mid-fight, so manual play gets a pulsing call to action under the HUD.
+func _draw_drive_ready_prompt() -> void:
+	if not player.can_overdrive() or state != GameState.PLAYING:
+		return
+	var text := "DRIVE READY   TAP DRIVE" if _touch_controls_enabled() else "DRIVE READY   PRESS E"
+	var pulse: float = beat_clock.pulse()
+	var size := 14
+	var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 28.0
+	var rect := Rect2((Config.W - width) * 0.5, Config.HUD + (40.0 if boss_controller.is_alive() else 10.0), width, 26.0)
+	_c.draw_rect(rect, Color(Config.UI_PANEL_DARK, 0.72))
+	_c.draw_rect(rect, Color(Config.UI_AMBER, 0.45 + 0.45 * pulse), false, 1.5)
+	hud.draw_centered(_c, font, text, rect.position.y + 18.0, size, Color(1.0, 0.9, 0.62).lerp(Color.WHITE, 0.4 * pulse))
 
 
 func _draw_arcade_title(text: String, y: float, size: int, color: Color) -> void:

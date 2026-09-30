@@ -122,6 +122,31 @@ func _initialize() -> void:
 	_assert(scene._handle_touch_controls_input(move_touch), "portrait move pad releases")
 	scene.portrait_pad = false
 
+	# Result and pause menus must be reachable without a keyboard.
+	scene.state = scene.GameState.GAME_OVER
+	scene._finish_run()
+	var retry_touch := InputEventScreenTouch.new()
+	retry_touch.index = 8
+	retry_touch.pressed = true
+	retry_touch.position = scene._menu_rects()[0].get_center()
+	_assert(scene._handle_menu_input(retry_touch), "game over retry accepts a tap")
+	_assert(scene.state == scene.GameState.PLAYING and scene.stage == 0, "retry restarts from stage 1")
+	scene._set_paused(true)
+	_assert(scene._menu_items().size() == 3, "pause offers resume, restart and title")
+	var title_touch_menu := InputEventScreenTouch.new()
+	title_touch_menu.index = 9
+	title_touch_menu.pressed = true
+	title_touch_menu.position = scene._menu_rects()[2].get_center()
+	_assert(scene._handle_menu_input(title_touch_menu), "pause title accepts a tap")
+	_assert(scene.state == scene.GameState.TITLE, "pause menu returns to title")
+	_assert(scene.audio_manager.current_music_key == "title", "returning to title restores title music")
+	scene.reset()
+	scene.score = scene.best_score + 1000
+	scene.state = scene.GameState.GAME_OVER
+	scene._finish_run()
+	_assert(scene.new_best and scene.best_score == scene.score, "manual game over records a new best")
+	scene.reset()
+
 	scene.selected_control_mode = scene.ControlMode.AI
 	scene.reset()
 	_assert(scene.control_mode == scene.ControlMode.AI, "ai selection starts ai play")
