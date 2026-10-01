@@ -82,6 +82,10 @@ static func _link_live(link: Dictionary, a: Variant, b: Variant) -> bool:
 
 func neighbors(enemy_id: int, by_id: Dictionary) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	# A destroyed source can emit, but a diving source has already left the network.
+	var source: Variant = by_id.get(enemy_id)
+	if source == null or float(source.get("dive", 0.0)) > 0.0:
+		return result
 	for link in links:
 		var other_id := -1
 		if int(link.a) == enemy_id:
@@ -92,8 +96,7 @@ func neighbors(enemy_id: int, by_id: Dictionary) -> Array[Dictionary]:
 			continue
 		var other: Variant = by_id.get(other_id)
 		# The source may already be destroyed; only its position matters for range.
-		var source: Variant = by_id.get(enemy_id)
-		if not is_node_live(other) or source == null:
+		if not is_node_live(other):
 			continue
 		var range_limit := LINK_RANGE * (2.2 if str(link.kind) != "grid" else 1.0)
 		if Vector2(source.x, source.y).distance_to(Vector2(other.x, other.y)) <= range_limit:

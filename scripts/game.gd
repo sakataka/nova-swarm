@@ -517,7 +517,8 @@ func _handle_title_pointer_input(event: InputEvent) -> bool:
 func _pointer_press_position(event: InputEvent) -> Variant:
 	if event is InputEventMouseButton:
 		var mouse_event := event as InputEventMouseButton
-		if mouse_event.pressed and mouse_event.button_index == MOUSE_BUTTON_LEFT:
+		# Godot also emits a mouse press for a touch; the original touch already handled the menu.
+		if mouse_event.device != InputEvent.DEVICE_ID_EMULATION and mouse_event.pressed and mouse_event.button_index == MOUSE_BUTTON_LEFT:
 			return mouse_event.position
 	elif event is InputEventScreenTouch:
 		var touch_event := event as InputEventScreenTouch
@@ -527,7 +528,7 @@ func _pointer_press_position(event: InputEvent) -> Variant:
 
 
 func _handle_touch_controls_input(event: InputEvent) -> bool:
-	if not _touch_controls_enabled():
+	if not (touch_controls_available or touch_controls_forced):
 		return false
 	if event is InputEventScreenTouch:
 		var touch_event := event as InputEventScreenTouch
@@ -543,12 +544,10 @@ func _handle_touch_controls_input(event: InputEvent) -> bool:
 
 
 func _begin_touch_control(index: int, position: Vector2) -> bool:
-	if not _should_draw_touch_controls():
-		return false
-	if _touch_pause_hitbox().has_point(position):
+	if _should_draw_touch_pause() and _touch_pause_hitbox().has_point(position):
 		_set_paused(state == GameState.PLAYING)
 		return true
-	if state != GameState.PLAYING:
+	if not _touch_controls_enabled() or state != GameState.PLAYING:
 		return false
 
 	var button_hitboxes := _touch_button_hitboxes()
@@ -1312,6 +1311,8 @@ func _check_collisions() -> void:
 		var hit_enemy: bool = swarm.enemies.any(func(enemy: Dictionary) -> bool: return _distance(enemy, player_pos) < enemy.size + 22.0)
 		if hit_bullet or hit_enemy:
 			_hurt()
+			if state == GameState.GAME_OVER:
+				return
 
 	for item in items:
 		if Vector2(item.x, item.y).distance_to(Vector2(player.x, player.y)) < 42.0:
@@ -1409,6 +1410,8 @@ func _trigger_shield_burst() -> void:
 
 
 func _check_stage_end() -> void:
+	if state != GameState.PLAYING:
+		return
 	if not boss_controller.boss.is_empty() and boss_controller.boss.hp <= 0:
 		score += 8000 + (2500 if player.no_miss_stage else 0)
 		_record_stage_result()
@@ -1603,6 +1606,8 @@ func draw_ui_pass(canvas: CanvasItem) -> void:
 			_draw_portrait_pad_contents()
 	if _should_draw_touch_controls():
 		_draw_touch_controls()
+	if _should_draw_touch_pause():
+		_draw_touch_button(_touch_pause_hitbox(), "PAUSE", "pause", Color(Config.UI_TEXT, 0.78), state == GameState.PAUSED)
 	_c = self
 
 
@@ -2458,7 +2463,6 @@ func _draw_touch_controls() -> void:
 	_draw_touch_button(Rect2(button_hitboxes.shoot), "SHOT", "shot", Config.UI_CYAN, bool(touch_button_pressed.shoot))
 	_draw_touch_button(Rect2(button_hitboxes.bomb), "BOMB", "bomb", Config.UI_AMBER, bool(touch_button_pressed.bomb), bomb_ready, str(player.bombs))
 	_draw_touch_button(Rect2(button_hitboxes.overdrive), "DRIVE", "overdrive", Config.UI_AMBER, touch_overdrive_queued or drive_active, drive_ready or drive_active, "", drive_ratio, drive_ready)
-	_draw_touch_button(_touch_pause_hitbox(), "PAUSE", "pause", Color(Config.UI_TEXT, 0.78), state == GameState.PAUSED)
 
 
 # Touch buttons carry their own state: a bomb count badge, and a Drive ring that fills with the gauge and glows when ready.
@@ -2524,6 +2528,10 @@ func _should_draw_touch_controls() -> bool:
 	if not _touch_controls_enabled():
 		return false
 	return state == GameState.PLAYING or (state == GameState.PAUSED and not portrait_pad)
+
+
+func _should_draw_touch_pause() -> bool:
+	return (touch_controls_available or touch_controls_forced) and (state == GameState.PLAYING or (state == GameState.PAUSED and not portrait_pad))
 
 
 func _touch_controls_enabled() -> bool:

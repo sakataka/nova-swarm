@@ -34,6 +34,20 @@ func _initialize() -> void:
 	title_touch.position = Rect2(title_hitboxes.manual).get_center()
 	_assert(scene._handle_title_pointer_input(title_touch), "title touch selects manual")
 	_assert(scene.selected_control_mode == scene.ControlMode.MANUAL, "touch selection switches title mode back to manual")
+	title_touch.position = Rect2(title_hitboxes.ai).get_center()
+	scene._handle_title_pointer_input(title_touch)
+	var touched_personality: String = scene.ai_pilot.personality
+	var emulated_click := InputEventMouseButton.new()
+	emulated_click.device = InputEvent.DEVICE_ID_EMULATION
+	emulated_click.pressed = true
+	emulated_click.button_index = MOUSE_BUTTON_LEFT
+	emulated_click.position = title_touch.position
+	_assert(not scene._handle_title_pointer_input(emulated_click), "the emulated mouse event cannot repeat a title tap")
+	_assert(scene.ai_pilot.personality == touched_personality, "one title tap selects AI without advancing its personality twice")
+	emulated_click.device = 0
+	_assert(scene._handle_title_pointer_input(emulated_click), "a real mouse click still cycles AI personality")
+	_assert(scene.ai_pilot.personality != touched_personality, "real mouse input remains active after a touch")
+	scene.ai_pilot.personality = "balanced"
 	scene.selected_control_mode = scene.ControlMode.AI
 	_assert(scene._select_title_mode_at(scene._title_start_hitbox().get_center()), "title pointer starts game")
 	_assert(scene.state == scene.GameState.PLAYING, "mouse start enters play")
@@ -151,6 +165,20 @@ func _initialize() -> void:
 	scene.reset()
 	_assert(scene.control_mode == scene.ControlMode.AI, "ai selection starts ai play")
 	_assert(scene.ai_pilot.record_debug, "ai demo records the pilot's reasoning for the overlay")
+	scene.portrait_pad = true
+	_assert(scene._should_draw_touch_pause() and not scene._should_draw_touch_controls(), "touch AI demo shows pause without manual flight controls")
+	pause_touch.position = scene._touch_pause_hitbox().get_center()
+	_assert(scene._handle_touch_controls_input(pause_touch), "touch pause also works during AI demo")
+	_assert(scene.state == scene.GameState.PAUSED, "touch AI pause opens the menu")
+	retry_touch.position = scene._menu_rects()[0].get_center()
+	_assert(scene._handle_menu_input(retry_touch), "touch AI demo resumes from the portrait menu")
+	_assert(scene.state == scene.GameState.PLAYING and scene.control_mode == scene.ControlMode.AI, "touch resume keeps the AI pilot active")
+	scene._set_paused(true)
+	title_touch_menu.position = scene._menu_rects()[2].get_center()
+	_assert(scene._handle_menu_input(title_touch_menu), "touch AI demo can return to title")
+	_assert(scene.state == scene.GameState.TITLE, "AI demo exits to title without a keyboard")
+	scene.portrait_pad = false
+	scene.reset()
 	var personality_before: String = scene.ai_pilot.personality
 	scene.ai_pilot.cycle_personality()
 	_assert(scene.ai_pilot.personality != personality_before, "ai personality cycles")
@@ -358,6 +386,19 @@ func _initialize() -> void:
 			neighbor_hp_after += maxi(0, int(enemy.hp))
 	_assert(neighbor_hp_after < neighbor_hp_before, "surges damage linked neighbors")
 	_assert(scene.score > 0, "surge kills are scored")
+	var isolated_network = scene.ResonanceNetworkScript.new()
+	var diving_source := {"id": 1, "kind": "diver", "hp": 0, "x": 100.0, "y": 100.0, "dive": 1.0}
+	var linked_target := {"id": 2, "kind": "bug", "hp": 1, "x": 150.0, "y": 100.0, "dive": 0.0}
+	var linked_nodes := {1: diving_source, 2: linked_target}
+	isolated_network.links.append({"a": 1, "b": 2, "kind": "grid"})
+	var chain_id: int = isolated_network.start_chain(Vector2.ZERO)
+	_assert(isolated_network.emit(diving_source, 1, 1, chain_id, linked_nodes) == 0, "a diving kill cannot surge along a disconnected link")
+	isolated_network.links.append({"a": 1, "b": 2, "kind": "grid"})
+	diving_source.dive = 0.0
+	linked_target.dive = 1.0
+	_assert(isolated_network.neighbors(1, linked_nodes).is_empty(), "a diving target cannot receive a link surge")
+	linked_target.dive = 0.0
+	_assert(isolated_network.emit(diving_source, 1, 1, chain_id, linked_nodes) == 1, "a returned source can surge even after destruction")
 
 	var clock = scene.beat_clock
 	clock.reset("stage_drive")
@@ -416,6 +457,27 @@ func _initialize() -> void:
 	scene._check_collisions()
 	_assert(scene.state == scene.GameState.GAME_OVER, "fatal hit ends run")
 	_assert(scene.audio_manager.current_music_key == "game_over", "game over starts game over music")
+
+	# The fatal frame cannot collect an item or grant a stage reward after saving the final score.
+	scene.selected_control_mode = scene.ControlMode.MANUAL
+	scene.reset()
+	scene.player.invuln = 0.0
+	scene.player.shield = 0
+	scene.player.lives = 1
+	scene.score = scene.best_score + 1000
+	scene.stage_wave = int(Config.STAGES[0].waves) - 1
+	scene.swarm.enemies.clear()
+	scene.items.append({"kind": "power", "x": scene.player.x, "y": scene.player.y, "vy": 0.0, "t": 0.0})
+	scene.projectiles.bullets.append({"x": scene.player.x, "y": scene.player.y, "enemy": true, "r": 8.0})
+	scene._check_collisions()
+	scene._check_stage_end()
+	_assert(scene.state == scene.GameState.GAME_OVER, "a fatal hit takes priority over stage clear")
+	_assert(scene.score == scene.best_score and scene.score == int(scene.stage_results[0].score), "fatal-frame score matches the saved best and stage result")
+	_assert(scene.player.chip_progress.power == 0 and scene.stage_transition_timer == 0.0, "game over blocks later pickup and stage rewards")
+	scene.load_stage(5)
+	scene.boss_controller.boss.hp = 0
+	scene._check_stage_end()
+	_assert(scene.state == scene.GameState.GAME_OVER and scene.score == scene.best_score, "stage-end checks cannot replace game over with victory")
 
 	scene.reset()
 	scene.state = scene.GameState.PAUSED
