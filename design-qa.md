@@ -1,13 +1,17 @@
 # Design QA
 
+This is the July 2026 launch-bay design review, retained as history. Its pass result applies to that revision, not the current game. Current assets and typography are documented in [visual-refresh.md](docs/visual-refresh.md), and current controls and verification commands in [README.md](README.md).
+
+The current title uses Oxanium text over `public/assets/refresh/title.png`, with controls drawn using `panel.png`. The HUD, pause/result menus and portrait touch pad are rendered through `scripts/ui_layer.gd` and `scripts/game.gd`; all dynamic labels use the bundled font. The earlier image-backed logo/button and fallback-font descriptions below refer to the July implementation.
+
 ## Evidence
 
-- Source visual truth: `/Users/sakataka/.codex/generated_images/019f4f0f-366b-71a2-a5de-f7c503904f3f/exec-05adc0f5-ab2b-4252-84cd-7b88809e4644.png`
-- Implementation screenshot: `/private/tmp/nova-pro-title-final.png`
+- Original concept identifier: `exec-05adc0f5-ab2b-4252-84cd-7b88809e4644` (not stored in this repository).
+- Implementation screenshot: `nova-pro-title-final.png` (temporary evidence, not stored in this repository).
 - Viewport: Godot logical viewport 960 x 720 px; Retina capture 1920 x 1440 px
 - State: title screen, MANUAL mode selected, before deployment
-- Full-view comparison: `/private/tmp/nova-title-comparison-final.png`
-- Focused control comparison: `/private/tmp/nova-title-controls-comparison.png`
+- Full-view comparison: `nova-title-comparison-final.png` (temporary evidence).
+- Focused control comparison: `nova-title-controls-comparison.png` (temporary evidence).
 
 ## Findings
 
@@ -22,15 +26,15 @@ Actionable P0/P1/P2 findings: none.
 
 ## Comparison History
 
-1. Initial implementation — `/private/tmp/nova-pro-title.png`
+1. Initial implementation — `nova-pro-title.png` (temporary evidence)
    - Finding: [P1] The deployment control was undersized and visually cropped, weakening the primary action.
    - Finding: [P2] The control crop contained edge artifacts and insufficient contrast.
    - Fix: Regenerated `DEPLOY` as a standalone image-backed asset, trimmed it independently, and increased cyan luminance.
-2. Second implementation — `/private/tmp/nova-pro-title3.png`
+2. Second implementation — `nova-pro-title3.png` (temporary evidence)
    - Post-fix evidence: The full button frame and label were restored at the intended scale.
    - Finding: [P2] Thin white edge remnants remained after background-key removal.
    - Fix: Removed the edge remnants, shaved the affected transparent bounds, and reimported the texture.
-3. Final implementation — `/private/tmp/nova-pro-title-final.png`
+3. Final implementation — `nova-pro-title-final.png` (temporary evidence)
    - Post-fix evidence: Full-view and focused comparisons show a complete, high-contrast primary action with no clipping or edge artifacts.
 
 ## Open Questions

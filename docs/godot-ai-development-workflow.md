@@ -1,6 +1,6 @@
 # Godot AI Development Workflow
 
-このメモは、Nova Swarm の Godot 4.6 + GDScript 開発でうまく回った進め方を、次の Godot プロジェクトにも移せるように整理したものです。いわゆる「Vibe Godoting」的な発想は、AI にゲームを丸ごと任せるためではなく、Godot の制作工程を分解して、Codex / MCP / テンプレート / アセット生成 / 自動テストを適切な粒度で組み合わせるために使います。
+このメモは、Nova Swarm の Godot 4.7 + GDScript 開発でうまく回った進め方を、次の Godot プロジェクトにも移せるように整理したものです。いわゆる「Vibe Godoting」的な発想は、AI にゲームを丸ごと任せるためではなく、Godot の制作工程を分解して、Codex / MCP / テンプレート / アセット生成 / 自動テストを適切な粒度で組み合わせるために使います。
 
 ## 基本方針
 
@@ -17,15 +17,21 @@ Nova Swarm では、現在の主な責務を次のように分けています。
 | 領域 | 主なファイル | 役割 |
 | --- | --- | --- |
 | ゲーム本体 | `scripts/game.gd` | `GameController` としてステージ、プレイヤー、敵、弾、HUD、音を束ねる |
-| 調整値 | `scripts/game_config.gd` | ステージ、敵、アップグレード、HUD 数字などの調整値 |
-| プレイヤー | `scripts/player.gd` | ライフ、ボム、無敵、チェイン、アップグレード修飾 |
+| 調整値 | `scripts/game_config.gd` | ステージ、敵、3系統の成長チップ、HUD 数字などの調整値 |
+| プレイヤー | `scripts/player.gd` | ライフ、ボム、無敵、チェイン、戦闘中のチップ成長 |
 | 敵編隊 | `scripts/enemy_swarm.gd` | 通常ステージの編隊移動、急降下、射撃 |
 | ボス | `scripts/boss_controller.gd` | ボスフェーズ、攻撃、ビーム予兆、部位破壊 |
 | 弾 | `scripts/projectile_manager.gd` | 自弾、敵弾、分岐ショット、Overdrive 弾 |
-| HUD | `scripts/hud.gd` | HUD、リザルト、AI Rival 表示 |
+| HUD | `scripts/hud.gd` | 固定HUD、成長・DRIVE・ボスHPの表示 |
+| UI | `scripts/ui_layer.gd` / `scripts/game.gd` | タイトル、ポーズ・結果メニュー、タッチ操作、AI観戦の情報 |
+| 発光 | `scripts/fx_layer.gd` | 加算合成の発光、火花、破片、ポップアップ。演出用乱数をゲームから分離 |
+| ビート | `scripts/beat_clock.gd` | BGMのビート、射撃とOverdriveの同期 |
+| 共鳴 | `scripts/resonance_network.gd` | 敵のリンク、撃破サージと連鎖 |
 | 音 | `scripts/audio_manager.gd` | 効果音、BGM、Resonate、Overdrive stem、headless 時の音声無効化 |
 | テスト | `scripts/*_test.gd` | smoke、gameplay、AI simulation、ボス戦検証 |
 | export | `export_presets.cfg` | Web / 配布向けの書き出し設定 |
+
+面間のアップグレード選択画面はなく、戦闘中に `POW` / `SPR` / `RES` チップを集めます。AIはタイトルの `AI DEMO` から開始し、プレイ中の `T` キーによるモード切り替えはありません。起動・検証・配布の現行手順は [README](../README.md) を参照してください。
 
 新しい Godot ゲームでも、最初にこの表に相当する「責務の住所」を決めてから実装すると、AI への依頼範囲が安定します。
 

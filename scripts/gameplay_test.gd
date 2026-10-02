@@ -136,6 +136,37 @@ func _initialize() -> void:
 	_assert(scene._handle_touch_controls_input(move_touch), "portrait move pad releases")
 	scene.portrait_pad = false
 
+	# A new run and background transitions must discard contacts and queued actions from the old screen.
+	scene.reset()
+	move_touch.pressed = true
+	move_touch.position = scene._touch_move_center()
+	scene._handle_touch_controls_input(move_touch)
+	move_drag.position = scene._touch_move_center() + Vector2(52.0, -38.0)
+	scene._handle_touch_controls_input(move_drag)
+	shoot_touch.pressed = true
+	scene._handle_touch_controls_input(shoot_touch)
+	scene._handle_touch_controls_input(overdrive_touch)
+	scene._set_paused(true)
+	scene._activate_menu_item("restart")
+	touch_command = scene._read_player_command()
+	_assert(touch_command.move_vector == Vector2.ZERO and not touch_command.shoot and not touch_command.overdrive, "restart discards held movement, shot and queued drive")
+	scene._handle_touch_controls_input(overdrive_touch)
+	scene._return_to_title()
+	scene.reset()
+	_assert(not scene._read_player_command().overdrive, "title navigation cannot carry a queued drive into the next run")
+	scene._handle_touch_controls_input(move_touch)
+	scene._handle_touch_controls_input(move_drag)
+	scene._handle_touch_controls_input(shoot_touch)
+	scene._notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	scene._notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	touch_command = scene._read_player_command()
+	_assert(touch_command.move_vector == Vector2.ZERO and not touch_command.shoot, "lost focus clears contacts even if no release event arrives")
+	scene._handle_touch_controls_input(overdrive_touch)
+	scene._on_web_pagehide([])
+	scene._on_web_pageshow([])
+	_assert(not scene._read_player_command().overdrive, "web pagehide clears a pending one-shot action")
+	_assert(scene._controls_rows().any(func(row: Array) -> bool: return row[0] == "MOVE" and row[1] == "LEFT STICK"), "manual touch pause help describes the stick")
+
 	# Result and pause menus must be reachable without a keyboard.
 	scene.state = scene.GameState.GAME_OVER
 	scene._finish_run()
@@ -165,6 +196,8 @@ func _initialize() -> void:
 	scene.reset()
 	_assert(scene.control_mode == scene.ControlMode.AI, "ai selection starts ai play")
 	_assert(scene.ai_pilot.record_debug, "ai demo records the pilot's reasoning for the overlay")
+	_assert(not scene._controls_rows().any(func(row: Array) -> bool: return row[0] == "MOVE" or row[0] == "SHOT"), "AI help does not offer manual flight controls")
+	_assert(scene._controls_rows().any(func(row: Array) -> bool: return row[0] == "PAUSE" and row[1] == "TAP PAUSE"), "touch AI help describes the available pause button")
 	scene.portrait_pad = true
 	_assert(scene._should_draw_touch_pause() and not scene._should_draw_touch_controls(), "touch AI demo shows pause without manual flight controls")
 	pause_touch.position = scene._touch_pause_hitbox().get_center()

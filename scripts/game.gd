@@ -183,6 +183,7 @@ func _notification(what: int) -> void:
 	if not audio_manager:
 		return
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		_clear_touch_controls()
 		audio_manager.set_app_active(false)
 	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
 		audio_manager.set_app_active(true)
@@ -218,10 +219,13 @@ func _teardown_web_audio_lifecycle() -> void:
 
 func _on_web_visibility_changed(_arguments: Array) -> void:
 	if _web_document != null:
+		if bool(_web_document.hidden):
+			_clear_touch_controls()
 		audio_manager.set_app_active(not bool(_web_document.hidden))
 
 
 func _on_web_pagehide(_arguments: Array) -> void:
+	_clear_touch_controls()
 	audio_manager.set_app_active(false)
 
 
@@ -585,6 +589,17 @@ func _end_touch_control(index: int) -> bool:
 	return handled
 
 
+func _clear_touch_controls() -> void:
+	touch_move_index = -1
+	touch_move_origin = Vector2.ZERO
+	touch_move_vector = Vector2.ZERO
+	for action in touch_button_indices:
+		touch_button_indices[action] = -1
+	for action in touch_button_pressed:
+		touch_button_pressed[action] = false
+	touch_overdrive_queued = false
+
+
 func _set_paused(paused: bool) -> void:
 	state = GameState.PAUSED if paused else GameState.PLAYING
 	menu_focus = 0
@@ -676,9 +691,7 @@ func _return_to_title() -> void:
 	highlight_timer = 0.0
 	highlight_strength = 0.0
 	stage_banner = 0.0
-	_end_touch_control(touch_move_index)
-	for action in touch_button_indices.keys():
-		_end_touch_control(int(touch_button_indices[action]))
+	_clear_touch_controls()
 	if overdrive_aura:
 		overdrive_aura.emitting = false
 	audio_manager.set_music_overdriven(false)
@@ -712,6 +725,7 @@ func _select_title_mode_at(position: Vector2) -> bool:
 
 
 func reset() -> void:
+	_clear_touch_controls()
 	stage = 0
 	score = 0
 	difficulty = 1.0
@@ -2316,10 +2330,16 @@ func _draw_menu_button(rect: Rect2, label: String, focused: bool, primary: bool)
 
 
 # Shows the input the player actually has: touch buttons on touch screens, keys otherwise.
-func _draw_controls_panel(y: float) -> void:
-	var rect := Rect2(250.0, y, 460.0, 196.0)
-	_draw_terminal_panel(rect, Config.UI_CYAN, 0.78)
-	var touch := _touch_controls_enabled()
+func _controls_rows() -> Array:
+	var touch := touch_controls_available or touch_controls_forced
+	if control_mode == ControlMode.AI:
+		return [
+			["MODE", "AI DEMO"],
+			["STYLE", str(ai_pilot.personality).to_upper()],
+			["PILOT", "AUTOMATIC"],
+			["PAUSE", "TAP PAUSE" if touch else "P / ESC"],
+			["RETURN", "TITLE IN MENU"],
+		]
 	var rows := [
 		["MOVE", "LEFT STICK" if touch else "WASD / ARROWS"],
 		["SHOT", "HOLD SHOT" if touch else "SPACE (HOLD)"],
@@ -2330,6 +2350,13 @@ func _draw_controls_panel(y: float) -> void:
 	]
 	if touch:
 		rows.pop_back()
+	return rows
+
+
+func _draw_controls_panel(y: float) -> void:
+	var rect := Rect2(250.0, y, 460.0, 196.0)
+	_draw_terminal_panel(rect, Config.UI_CYAN, 0.78)
+	var rows := _controls_rows()
 	for i in range(rows.size()):
 		var row_y := y + 42.0 + float(i) * 26.0
 		_c.draw_string(font, Vector2(rect.position.x + 34.0, row_y), rows[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER if rows[i][0] == "DRIVE" else Config.UI_CYAN)
