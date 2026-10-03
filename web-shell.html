@@ -154,6 +154,7 @@ body {
 // Observe the browser's actual audio state before Godot creates its context.
 // Autoplay permission can leave SOUND enabled while the context is suspended.
 window.novaAudioState = { ready: false };
+const novaAudioContexts = [];
 for (const name of ['AudioContext', 'webkitAudioContext']) {
 	const NativeAudioContext = window[name];
 	if (typeof NativeAudioContext !== 'function') continue;
@@ -163,9 +164,21 @@ for (const name of ['AudioContext', 'webkitAudioContext']) {
 			const updateState = () => { window.novaAudioState.ready = context.state === 'running'; };
 			context.addEventListener('statechange', updateState);
 			updateState();
+			novaAudioContexts.push(context);
 			return context;
 		},
 	});
+}
+// Browsers only let audio start from a user gesture. Resume inside the first
+// click, tap or key press anywhere on the page, even before the canvas has
+// focus, so the title music starts without hunting for START SOUND.
+const resumeNovaAudio = () => {
+	for (const context of novaAudioContexts) {
+		if (context.state === 'suspended') context.resume().catch(() => {});
+	}
+};
+for (const type of ['pointerdown', 'pointerup', 'touchend', 'keydown']) {
+	window.addEventListener(type, resumeNovaAudio, { capture: true, passive: true });
 }
 		</script>
 		<script src="$GODOT_URL"></script>

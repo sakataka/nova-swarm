@@ -437,6 +437,20 @@ func _initialize() -> void:
 	await process_frame
 
 	scene.load_stage(0)
+	var arriving: Array = scene.swarm.enemies
+	_assert(arriving.all(func(enemy: Dictionary) -> bool: return scene.swarm.is_entering(enemy)), "a new formation flies in before it takes its slots")
+	_assert(scene.network.active_links(scene.network.index_enemies(arriving)).is_empty(), "arriving ships join the network only after reaching their slots")
+	for i in range(120):
+		scene.swarm.update(1.0 / 60.0, Config.STAGES[0], 0, float(i) / 60.0, 1.0, 480.0, scene.projectiles, Config.ENEMY_STATS, false)
+	_assert(not arriving.any(func(enemy: Dictionary) -> bool: return scene.swarm.is_entering(enemy)), "the formation settles within two seconds")
+	var returning: Dictionary = arriving[0]
+	returning.dive = 1.0
+	returning.y = Config.H + 39.0
+	scene.swarm.update(1.0 / 60.0, Config.STAGES[0], 0, 2.0, 1.0, 480.0, scene.projectiles, Config.ENEMY_STATS, false)
+	_assert(scene.swarm.is_entering(returning) and returning.y < Config.HUD, "a diver loops back over the top instead of popping into its slot")
+	scene.load_stage(0)
+	for enemy in scene.swarm.enemies:
+		enemy.enter = 1.0
 	_assert(scene.network.links.size() >= 20, "formation enemies are linked into a resonance network")
 	var node: Dictionary = scene.swarm.enemies.filter(func(enemy: Dictionary) -> bool: return int(enemy.get("row", -1)) == 0 and int(enemy.get("col", -1)) == 1)[0]
 	var neighbor_ids: Array = scene.network.neighbors(int(node.id), scene.network.index_enemies(scene.swarm.enemies)).map(func(enemy: Dictionary) -> int: return int(enemy.id))
@@ -576,6 +590,37 @@ func _initialize() -> void:
 	scene.items.append({"kind": "power", "x": scene.player.x, "y": scene.player.y, "vy": 0.0, "t": 0.0})
 	scene._check_collisions()
 	_assert(scene.player.chip_progress.power == 1, "combat chip is collected without pausing")
+
+	# A bomb wounds a midboss instead of erasing it outright.
+	scene.reset()
+	scene.load_stage(2)
+	scene._start_wave(int(Config.STAGES[2].waves) - 1)
+	var midboss: Dictionary = scene.swarm.enemies[0]
+	midboss.enter = 1.0
+	midboss.x = scene.player.x
+	midboss.y = scene.player.y - 260.0
+	var midboss_hp := int(midboss.hp)
+	scene.player.bombs = 2
+	scene._use_bomb()
+	_assert(int(midboss.hp) == midboss_hp - scene.BOMB_HEAVY_DAMAGE and scene.swarm.enemies.has(midboss), "a bomb deals heavy damage to a midboss without destroying it")
+
+	# Drops left on the field when the stage clears are pulled in and collected.
+	scene.reset()
+	scene.stage_wave = int(Config.STAGES[0].waves) - 1
+	scene.swarm.enemies.clear()
+	scene._check_stage_end()
+	scene.items.append({"kind": "power", "x": 120.0, "y": Config.HUD + 80.0, "vy": 82.0, "t": 0.0})
+	for i in range(50):
+		scene._update_items(1.0 / 60.0)
+		scene._check_collisions()
+	_assert(scene.items.is_empty() and scene.player.chip_progress.power == 1, "stage clear collects leftover chips before the next stage")
+
+	# A death during the stage-clear banner settles the warp transition.
+	scene.player.invuln = 0.0
+	scene.player.shield = 0
+	scene.player.lives = 1
+	scene._hurt()
+	_assert(scene.state == scene.GameState.GAME_OVER and scene.stage_transition_timer == 0.0, "game over cancels the pending stage warp")
 
 	root.remove_child(scene)
 	scene.free()

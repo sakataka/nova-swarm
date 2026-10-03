@@ -62,7 +62,8 @@ static func index_enemies(enemies: Array) -> Dictionary:
 
 
 static func is_node_live(enemy: Variant) -> bool:
-	return enemy != null and int(enemy.hp) > 0 and float(enemy.get("dive", 0.0)) <= 0.0
+	# Ships still flying into formation join the network when they reach their slot.
+	return enemy != null and int(enemy.hp) > 0 and float(enemy.get("dive", 0.0)) <= 0.0 and float(enemy.get("enter", 1.0)) >= 1.0
 
 
 func active_links(by_id: Dictionary) -> Array[Dictionary]:

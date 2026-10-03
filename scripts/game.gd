@@ -85,6 +85,10 @@ var ai_pace: Array = []
 var _pace_record: Array = []
 var _pending_beat_tick := false
 const BEST_SCORE_PATH := "user://best_score.json"
+# SOUND and an explicit MOTION choice carry over to the next launch.
+const SETTINGS_PATH := "user://settings.json"
+const BOMB_HEAVY_DAMAGE := 42
+var _motion_overridden := false
 var best_score := 0
 var new_best := false
 # Keyboard/pointer focus for the pause and result menus.
@@ -171,6 +175,7 @@ func _ready() -> void:
 	_setup_render_layers()
 	_setup_spectator()
 	best_score = _load_best_score()
+	_load_settings()
 	audio_manager.play_music("title", 0.25)
 	_parse_web_query()
 	_update_portrait_pad()
@@ -356,6 +361,39 @@ func _load_best_score() -> int:
 	return int(data.get("manual", 0))
 
 
+func _load_settings() -> void:
+	if DisplayServer.get_name() == "headless" or not FileAccess.file_exists(SETTINGS_PATH):
+		return
+	var file := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var data: Variant = JSON.parse_string(file.get_as_text())
+	if typeof(data) != TYPE_DICTIONARY:
+		return
+	if data.has("sound"):
+		audio_manager.muted = not bool(data.sound)
+	if data.has("reduced_motion"):
+		reduced_motion = bool(data.reduced_motion)
+		_motion_overridden = true
+
+
+func _save_settings() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var data := {"sound": not audio_manager.muted}
+	# Without an explicit choice, motion keeps following the OS preference.
+	if _motion_overridden:
+		data["reduced_motion"] = reduced_motion
+	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify(data))
+
+
+func _toggle_sound() -> void:
+	audio_manager.toggle_mute()
+	_save_settings()
+
+
 # Only manual runs set the personal best; AI Demo runs feed the pace curve instead.
 func _record_best_score() -> void:
 	if control_mode != ControlMode.MANUAL or score <= best_score:
@@ -423,7 +461,8 @@ func _process(delta: float) -> void:
 	_update_web_audio_start()
 	_update_ui_feedback(dt)
 	beat_clock.update(dt, audio_manager.current_music_key, audio_manager.get_music_position())
-	if beat_clock.ticked:
+	# Only live play consumes beats; a tick seen while paused would fire off-beat on resume.
+	if beat_clock.ticked and state == GameState.PLAYING:
 		_pending_beat_tick = true
 	if hitstop > 0.0:
 		hitstop = maxf(0.0, hitstop - dt)
@@ -469,7 +508,8 @@ func _update_visuals(dt: float) -> void:
 func _update_feedback(dt: float) -> void:
 	screen_shake = maxf(0.0, screen_shake - dt * 26.0)
 	flash = maxf(0.0, flash - dt * 3.8)
-	stage_banner = maxf(0.0, stage_banner - dt)
+	if state == GameState.PLAYING:
+		stage_banner = maxf(0.0, stage_banner - dt)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -503,7 +543,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_set_paused(state == GameState.PLAYING)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("mute_audio"):
-		audio_manager.toggle_mute()
+		_toggle_sound()
 		get_viewport().set_input_as_handled()
 
 
@@ -560,9 +600,11 @@ func _activate_setting(key: String) -> void:
 		if _web_audio_waiting and not audio_manager.muted:
 			# The first sound press unlocks audio; it must not turn SOUND off.
 			return
-		audio_manager.toggle_mute()
+		_toggle_sound()
 	elif key == "motion":
 		reduced_motion = not reduced_motion
+		_motion_overridden = true
+		_save_settings()
 
 
 func _handle_settings_input(event: InputEvent) -> bool:
@@ -684,6 +726,8 @@ func _set_paused(paused: bool) -> void:
 	state = GameState.PAUSED if paused else GameState.PLAYING
 	menu_focus = 0
 	audio_manager.set_music_ducked(paused)
+	if overdrive_aura:
+		overdrive_aura.emitting = false
 
 
 func _menu_items() -> Array:
@@ -931,6 +975,8 @@ func _update_stage_gimmicks(dt: float) -> void:
 			hazard.x += cos(stage_timer * 0.5 + hazard.t) * 14.0 * dt
 			hazard.x = clampf(hazard.x, 92.0, Config.W - 92.0)
 		_check_rock_collisions()
+		if state != GameState.PLAYING:
+			return
 	elif stage == 4:
 		_update_plasma_reflectors()
 	if player.is_overdrive_active():
@@ -968,6 +1014,9 @@ func _update_game(dt: float) -> void:
 		audio_manager.play_sfx("boss")
 	projectiles.update(dt)
 	_update_stage_gimmicks(dt)
+	if state != GameState.PLAYING:
+		# A fatal rock hit already closed the run; nothing more may score this frame.
+		return
 	_update_overdrive_feedback()
 	_update_explosions(dt)
 	_update_items(dt)
@@ -1178,6 +1227,15 @@ func _use_bomb() -> void:
 
 	for enemy in swarm.enemies:
 		if absf(enemy.x - blast.x) < blast.width * 0.54 and enemy.y < player.y - 22.0:
+			if str(enemy.kind).begins_with("mid_"):
+				# Midbosses take a heavy hit like the final boss instead of vanishing,
+				# and a bomb kill still sends the tether surge to the other midbosses.
+				enemy.hp -= BOMB_HEAVY_DAMAGE
+				enemy.flash = 1.0
+				explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": true})
+				if enemy.hp <= 0:
+					_on_enemy_shot_down(enemy)
+				continue
 			enemy.hp = 0
 			bomb_kills += 1
 			explosions.append({"x": enemy.x, "y": enemy.y, "t": 0.0, "big": enemy.kind in ["armor", "saucer", "mid_lancer", "mid_orbit", "mid_anchor"]})
@@ -1185,14 +1243,12 @@ func _use_bomb() -> void:
 			score += int(enemy.score * 0.6)
 			if enemy.kind == "commander":
 				_handle_commander_defeat(enemy)
-			elif enemy.kind in ["mid_lancer", "mid_orbit", "mid_anchor"]:
-				_handle_midboss_defeat(enemy)
 			else:
 				_maybe_drop_item(enemy, true)
 	swarm.remove_dead()
 
 	if boss_controller.is_alive() and absf(boss_controller.boss.x - blast.x) < 205.0:
-		boss_controller.boss.hp = max(0, boss_controller.boss.hp - 42)
+		boss_controller.boss.hp = max(0, boss_controller.boss.hp - BOMB_HEAVY_DAMAGE)
 		for i in range(5):
 			explosions.append({"x": blast.x - 58.0 + i * 29.0, "y": boss_controller.boss.y - 80.0 + i * 28.0, "t": 0.0, "big": true})
 
@@ -1216,6 +1272,14 @@ func _update_explosions(dt: float) -> void:
 func _update_items(dt: float) -> void:
 	for item in items:
 		item.t += dt
+		if stage_transition_timer > 0.0:
+			# Stage clear: pull leftover drops (often the commander's chip) into the ship
+			# before the next stage clears the field.
+			var to_player := Vector2(player.x - item.x, player.y - item.y)
+			var step := minf(to_player.length(), 900.0 * dt)
+			item.x += to_player.normalized().x * step
+			item.y += to_player.normalized().y * step
+			continue
 		item.y += item.vy * dt
 		item.x += sin(item.t * 4.0) * 18.0 * dt
 	items = items.filter(func(item: Dictionary) -> bool: return item.y < Config.H + 36.0)
@@ -1292,7 +1356,13 @@ func _update_score_crystals(dt: float) -> void:
 	for crystal in score_crystals:
 		crystal.t += dt
 		var to_player := Vector2(player.x - crystal.x, player.y - crystal.y)
-		if to_player.length() < 220.0:
+		if stage_transition_timer > 0.0:
+			var step := minf(to_player.length(), 900.0 * dt)
+			crystal.x += to_player.normalized().x * step
+			crystal.y += to_player.normalized().y * step
+			crystal.vx = 0.0
+			crystal.vy = 0.0
+		elif to_player.length() < 220.0:
 			var pull := to_player.normalized() * 260.0 * dt
 			crystal.vx += pull.x
 			crystal.vy += pull.y
@@ -1426,7 +1496,8 @@ func _check_collisions() -> void:
 				fx.burst(Vector2(item.x, item.y), pickup_color, 10 if leveled_up else 5, 220.0, 0.32)
 				if leveled_up:
 					fx.popup(Vector2(player.x, player.y - 70.0), str(Config.CHIP_TRACKS[item.kind].name) + " LV" + str(player.chip_levels[item.kind]), pickup_color, 20, 1.1)
-			flash = maxf(flash, 0.25 if leveled_up else 0.12)
+			if leveled_up:
+				flash = maxf(flash, 0.16)
 			_add_shake(2.2 if leveled_up else 0.5)
 			audio_manager.play_sfx("level_up" if leveled_up else "chip")
 	items = items.filter(func(item: Dictionary) -> bool: return item.y < Config.H + 100.0)
@@ -1483,10 +1554,20 @@ func _hurt() -> void:
 		if not _has_stage_result(stage):
 			_record_stage_result()
 		state = GameState.GAME_OVER
+		_end_run_feedback()
 		_finish_run()
 		audio_manager.set_music_overdriven(false)
 		audio_manager.set_music_ducked(false)
 		audio_manager.play_music("game_over")
+
+
+# Result screens: stop pending transitions (the warp starfield) and Overdrive effects.
+func _end_run_feedback() -> void:
+	wave_transition_timer = 0.0
+	stage_transition_timer = 0.0
+	player.overdrive_timer = 0.0
+	if overdrive_aura:
+		overdrive_aura.emitting = false
 
 
 func _trigger_shield_burst() -> void:
@@ -1515,6 +1596,7 @@ func _check_stage_end() -> void:
 		explosions.append({"x": boss_controller.boss.x, "y": boss_controller.boss.y, "t": 0.0, "big": true})
 		boss_controller.clear()
 		state = GameState.VICTORY
+		_end_run_feedback()
 		_finish_run()
 		audio_manager.set_music_overdriven(false)
 		_add_shake(7.0)
@@ -1546,6 +1628,7 @@ func _check_stage_end() -> void:
 			player.lives += 1
 			rewards.append("LIFE +1")
 		audio_manager.play_sfx("stage_clear")
+		projectiles.clear_enemy_bullets()
 		pending_stage = stage + 1
 		stage_transition_timer = 0.95
 		rewards.push_front("RANK " + str(stage_results[-1].rank))
@@ -1692,7 +1775,7 @@ func draw_ui_pass(canvas: CanvasItem) -> void:
 			_draw_ai_pace()
 			_draw_drive_ready_prompt()
 	if flash > 0.0 and not reduced_motion:
-		_c.draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.34))
+		_c.draw_rect(Rect2(0, Config.HUD, Config.W, Config.PLAY_H), Color(1.0, 0.92, 0.72, flash * 0.28))
 	if stage_banner > 0.0 and state == GameState.PLAYING:
 		_draw_stage_banner(minf(1.0, stage_banner * 2.5))
 	if state != GameState.PLAYING:
@@ -1890,18 +1973,20 @@ func _draw_renewal_enemy(enemy: Dictionary) -> void:
 func draw_light_pass(canvas: Node2D) -> void:
 	var st: Dictionary = Config.STAGES[stage]
 	var tint: Color = st.tint
-	var beat_pulse: float = beat_clock.pulse()
+	var soft_beat: float = beat_clock.soft_pulse()
 	var bar_pulse: float = beat_clock.bar_pulse()
 	for i in range(4):
 		var nebula_pos := Vector2(fposmod(float(i) * 263.0 + stage_timer * 6.0, Config.W + 400.0) - 200.0, Config.HUD + 90.0 + float(i) * 150.0 + sin(stage_timer * 0.2 + float(i)) * 40.0)
-		canvas.glow(nebula_pos, Color(tint, 0.05 + bar_pulse * 0.05), 520.0)
-	# Rhythm frame: side rails flash on each beat, a sonar sweep crosses the field once per bar.
-	var rail_color := Color(tint, 0.1 + beat_pulse * 0.45)
-	for rail_x in [5.0, Config.W - 5.0]:
-		canvas.draw_line(Vector2(rail_x, Config.HUD), Vector2(rail_x, Config.H), rail_color, 2.0)
-		canvas.glow_stretched(Vector2(rail_x, (Config.HUD + Config.H) * 0.5), Color(tint, beat_pulse * 0.22), Vector2(34.0, Config.PLAY_H))
+		canvas.glow(nebula_pos, Color(tint, 0.05 + bar_pulse * 0.015), 520.0)
+	# Rhythm frame: thin side rails breathe with the beat while a marker and a faint
+	# sonar sweep travel down once per bar. Full-height edge flashes at 130–160 BPM
+	# read as strobing, so the rails stay low-contrast and the motion carries the rhythm.
+	var rail_color := Color(tint, 0.1 + soft_beat * 0.12)
 	var sweep_y := Config.HUD + fposmod(beat_clock.beat, 4.0) / 4.0 * Config.PLAY_H
-	canvas.glow_stretched(Vector2(Config.W * 0.5, sweep_y), Color(tint, 0.05), Vector2(Config.W * 1.4, 26.0))
+	for rail_x in [5.0, Config.W - 5.0]:
+		canvas.draw_line(Vector2(rail_x, Config.HUD), Vector2(rail_x, Config.H), rail_color, 1.5)
+		canvas.glow_stretched(Vector2(rail_x, sweep_y), Color(tint, 0.2), Vector2(12.0, 72.0))
+	canvas.glow_stretched(Vector2(Config.W * 0.5, sweep_y), Color(tint, 0.035), Vector2(Config.W * 1.4, 26.0))
 	for bullet in projectiles.bullets:
 		var pos := Vector2(bullet.x, bullet.y)
 		var color: Color = bullet.color
@@ -2018,7 +2103,7 @@ func _draw_network_links() -> void:
 
 func _draw_network_lights(canvas: Node2D) -> void:
 	var by_id: Dictionary = ResonanceNetworkScript.index_enemies(swarm.enemies)
-	var pulse: float = beat_clock.pulse(4.0)
+	var pulse: float = beat_clock.soft_pulse()
 	var travel: float = beat_clock.phase()
 	for link in network.active_links(by_id):
 		var a: Dictionary = by_id[int(link.a)]
@@ -2026,10 +2111,10 @@ func _draw_network_lights(canvas: Node2D) -> void:
 		var start := Vector2(a.x, a.y)
 		var end := Vector2(b.x, b.y)
 		var color := _link_color(link)
-		canvas.draw_line(start, end, Color(color, 0.1 + pulse * 0.32), 2.0 if link.kind == "grid" else 3.0, true)
+		canvas.draw_line(start, end, Color(color, 0.14 + pulse * 0.2), 2.0 if link.kind == "grid" else 3.0, true)
 		# Energy packets travel along the links once per beat.
 		var packet := start.lerp(end, travel if (int(link.a) + int(link.b)) % 2 == 0 else 1.0 - travel)
-		canvas.glow(packet, Color(color, 0.35 + pulse * 0.3), 16.0 if link.kind == "grid" else 24.0)
+		canvas.glow(packet, Color(color, 0.4 + pulse * 0.2), 16.0 if link.kind == "grid" else 24.0)
 	for surge in network.surges:
 		var target: Variant = by_id.get(int(surge.to_id))
 		if target == null:
@@ -2519,7 +2604,11 @@ func _draw_title_screen() -> void:
 	var hint := "AI DEMO: TAP AGAIN TO CHANGE STYLE" if touch_controls_available else "WASD MOVE    SPACE SHOT    B BOMB    E DRIVE    P PAUSE    TAB SELECT"
 	if selected_control_mode == ControlMode.AI and not touch_controls_available:
 		hint = "UP / DOWN  AI STYLE    V  HOLOGRAM IN FLIGHT    ENTER  DEPLOY    TAB  SELECT"
-	hud.draw_centered(_c, font, hint, 707, 12, Color(Config.UI_TEXT, 0.72))
+	if _web_audio_waiting and not audio_manager.muted:
+		# Browsers hold page audio until the first click or key press on each visit.
+		hud.draw_centered(_c, font, "CLICK OR PRESS ANY KEY TO START SOUND", 707, 12, Color(Config.UI_AMBER, 0.7 + 0.25 * sin(_ui_time * 3.0)))
+	else:
+		hud.draw_centered(_c, font, hint, 707, 12, Color(Config.UI_TEXT, 0.72))
 	_draw_settings_controls()
 
 

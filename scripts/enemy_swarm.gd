@@ -3,8 +3,15 @@ class_name EnemySwarm
 
 const Config := preload("res://scripts/game_config.gd")
 
+# Seconds a new formation takes to fly into its slots, and a diver to rejoin it.
+const ENTRY_TIME := 0.85
+const MIDBOSS_ENTRY_TIME := 1.25
+const RETURN_TIME := 1.1
+
 var enemies: Array[Dictionary] = []
 var swarm_dir := 1.0
+# Shared sideways drift of the grid formation; every grid slot is base_x + formation_x.
+var formation_x := 0.0
 var next_id := 1
 var width := 960.0
 var hud_y := 76.0
@@ -18,6 +25,22 @@ func setup(play_width: float, hud_height: float) -> void:
 func clear() -> void:
 	enemies.clear()
 	swarm_dir = 1.0
+	formation_x = 0.0
+
+
+static func is_entering(enemy: Dictionary) -> bool:
+	return float(enemy.get("enter", 1.0)) < 1.0
+
+
+# Ships fly in from above the playfield and settle into their slot.
+# They cannot fire or dive and stay out of the resonance network until they arrive.
+func _begin_entry(enemy: Dictionary, from: Vector2, delay: float, duration: float, arc: float) -> void:
+	enemy.enter = 0.0
+	enemy.enter_delay = delay
+	enemy.enter_time = duration
+	enemy.enter_from = from
+	enemy.enter_arc = arc
+	enemy.armed = false
 
 
 func load_stage(stage_data: Dictionary, enemy_stats: Dictionary, difficulty: float, wave_index := 0) -> void:
@@ -29,6 +52,7 @@ func load_stage(stage_data: Dictionary, enemy_stats: Dictionary, difficulty: flo
 	var commander_y := hud_y + 64.0
 	var is_midboss_wave: bool = int(stage_data.get("midbosses", 0)) > 0 and wave_index >= int(stage_data.get("waves", 1)) - 1
 	var row_count: int = 0 if is_midboss_wave else int(stage_data.rows)
+	var center_col := (float(stage_data.cols) - 1.0) * 0.5
 	for row in range(row_count):
 		for col in range(stage_data.cols):
 			var kind: String = stage_data.kinds[(row + col + wave_index) % stage_data.kinds.size()]
@@ -52,6 +76,9 @@ func load_stage(stage_data: Dictionary, enemy_stats: Dictionary, difficulty: flo
 				"score": int(stats.score),
 				"size": float(stats.size),
 			})
+			# Columns peel in from the centre outwards, each row a beat behind the one above.
+			var side := float(col) - center_col
+			_begin_entry(enemies[-1], Vector2(x + side * 46.0, hud_y - 70.0 - float(row) * 26.0), float(row) * 0.08 + absf(side) * 0.045, ENTRY_TIME, signf(side) * 70.0 if side != 0.0 else 0.0)
 			next_id += 1
 	if is_midboss_wave:
 		_spawn_midbosses(int(stage_data.midbosses), enemy_stats, difficulty)
@@ -72,6 +99,7 @@ func load_stage(stage_data: Dictionary, enemy_stats: Dictionary, difficulty: flo
 			"score": int(stats.score),
 			"size": float(stats.size),
 		})
+		_begin_entry(enemies[-1], Vector2(width / 2.0, hud_y - 110.0), 0.35, MIDBOSS_ENTRY_TIME, 0.0)
 		next_id += 1
 
 
@@ -98,6 +126,7 @@ func _spawn_midbosses(count: int, enemy_stats: Dictionary, difficulty: float) ->
 			"score": int(stats.score),
 			"size": float(stats.size),
 		})
+		_begin_entry(enemies[-1], Vector2(x, hud_y - 120.0), float(i) * 0.22, MIDBOSS_ENTRY_TIME, 0.0)
 		next_id += 1
 
 
@@ -105,17 +134,21 @@ func _spawn_midbosses(count: int, enemy_stats: Dictionary, difficulty: float) ->
 func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: float, difficulty: float, player_x: float, projectiles: RefCounted, enemy_stats: Dictionary, beat_tick: Variant = null) -> void:
 	if enemies.is_empty():
 		return
-	var edge := false
 	var commander_alive := false
+	var grid_left := INF
+	var grid_right := -INF
 	for enemy in enemies:
-		if enemy.dive <= 0.0 and enemy.kind != "commander" and (enemy.x < 54.0 or enemy.x > width - 54.0):
-			edge = true
 		if enemy.kind == "commander" and enemy.hp > 0:
 			commander_alive = true
-		if edge and commander_alive:
-			break
-	if edge:
-		swarm_dir *= -1.0
+		elif enemy.has("row") and enemy.hp > 0:
+			grid_left = minf(grid_left, float(enemy.base_x))
+			grid_right = maxf(grid_right, float(enemy.base_x))
+	# Turn only when heading into a wall, so the formation never jitters in place at an edge.
+	if grid_left + formation_x < 54.0 and swarm_dir < 0.0:
+		swarm_dir = 1.0
+	elif grid_right + formation_x > width - 54.0 and swarm_dir > 0.0:
+		swarm_dir = -1.0
+	formation_x += swarm_dir * float(stage_data.speed) * difficulty * dt
 	var command_fire_mult := 1.22 if commander_alive else 1.0
 	var command_dive_mult := 1.28 if commander_alive else 1.0
 
@@ -123,25 +156,26 @@ func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: fl
 		enemy.t += dt
 		var is_commander: bool = enemy.kind == "commander"
 		var is_midboss: bool = enemy.kind in ["mid_lancer", "mid_orbit", "mid_anchor"]
-		if is_midboss:
-			var slot_offset := -1.0 if enemy.kind == "mid_lancer" else 1.0 if enemy.kind == "mid_orbit" else 0.0
-			enemy.x = enemy.base_x + sin(enemy.t * (0.72 + absf(slot_offset) * 0.12)) * (72.0 if enemy.kind != "mid_anchor" else 46.0)
-			enemy.y = enemy.base_y + sin(enemy.t * 1.35 + enemy.id) * 22.0
-		elif enemy.dive <= 0.0 and not is_commander and randf() < stage_data.dive * difficulty * command_dive_mult * dt * 0.035:
+		if is_entering(enemy):
+			_update_entry(enemy, dt, stage_timer)
+			continue
+		if not is_midboss and enemy.dive <= 0.0 and not is_commander and randf() < stage_data.dive * difficulty * command_dive_mult * dt * 0.035:
 			enemy.dive = 1.0
 		if enemy.dive > 0.0:
 			enemy.y += (120.0 + stage_index * 24.0) * dt
 			enemy.x += sin(enemy.t * (8.0 if enemy.kind == "zig" else 4.0)) * 160.0 * dt
 			if enemy.y > Config.H + 40.0:
-				enemy.y = hud_y + 50.0
-				enemy.x = enemy.base_x
+				# Loop back over the top and glide into the slot instead of popping in.
 				enemy.dive = 0.0
-		elif is_commander:
-			enemy.x = enemy.base_x + sin(stage_timer * 1.15 + enemy.id) * 82.0
-			enemy.y = enemy.base_y + sin(stage_timer * 1.85 + enemy.id) * 12.0
+				var slot := _slot_position(enemy, stage_timer)
+				_begin_entry(enemy, Vector2(slot.x, hud_y - 50.0), 0.0, RETURN_TIME, 0.0)
+				enemy.x = slot.x
+				enemy.y = hud_y - 50.0
+				continue
 		else:
-			enemy.x += swarm_dir * stage_data.speed * difficulty * dt
-			enemy.y = enemy.base_y + sin(stage_timer * 1.6 + enemy.id) * 9.0
+			var slot := _slot_position(enemy, stage_timer)
+			enemy.x = slot.x
+			enemy.y = slot.y
 
 		if float(enemy.get("stun", 0.0)) > 0.0:
 			# Stunned by a network collapse: the reactor is offline and cannot fire.
@@ -167,9 +201,39 @@ func update(dt: float, stage_data: Dictionary, stage_index: int, stage_timer: fl
 			projectiles.fire_enemy(enemy, player_x, enemy_stats)
 
 
+# Where a ship sits in formation right now: the drifting grid, the commander's
+# sway or a midboss's patrol loop.
+func _slot_position(enemy: Dictionary, stage_timer: float) -> Vector2:
+	var base := Vector2(float(enemy.get("base_x", enemy.x)), float(enemy.get("base_y", enemy.y)))
+	var t := float(enemy.get("t", 0.0))
+	match str(enemy.kind):
+		"mid_lancer", "mid_orbit":
+			return base + Vector2(sin(t * 0.84) * 72.0, sin(t * 1.35 + enemy.id) * 22.0)
+		"mid_anchor":
+			return base + Vector2(sin(t * 0.72) * 46.0, sin(t * 1.35 + enemy.id) * 22.0)
+		"commander":
+			return base + Vector2(sin(stage_timer * 1.15 + enemy.id) * 82.0, sin(stage_timer * 1.85 + enemy.id) * 12.0)
+	return base + Vector2(formation_x, sin(stage_timer * 1.6 + enemy.id) * 9.0)
+
+
+func _update_entry(enemy: Dictionary, dt: float, stage_timer: float) -> void:
+	enemy.armed = false
+	var delay := float(enemy.get("enter_delay", 0.0))
+	if delay > 0.0:
+		enemy.enter_delay = delay - dt
+	else:
+		enemy.enter = minf(1.0, float(enemy.enter) + dt / maxf(0.01, float(enemy.get("enter_time", ENTRY_TIME))))
+	var eased := 1.0 - pow(1.0 - float(enemy.enter), 3.0)
+	var from: Vector2 = enemy.get("enter_from", Vector2(enemy.x, enemy.y))
+	var position := from.lerp(_slot_position(enemy, stage_timer), eased)
+	position.x += sin(eased * PI) * float(enemy.get("enter_arc", 0.0))
+	enemy.x = position.x
+	enemy.y = position.y
+
+
 # Bar downbeat volley: a few formation nodes arm together so fire lands in rhythmic waves.
 func arm_downbeat_volley(stage_index: int, difficulty: float) -> void:
-	var candidates := enemies.filter(func(enemy: Dictionary) -> bool: return enemy.kind != "commander" and not str(enemy.kind).begins_with("mid_") and float(enemy.get("dive", 0.0)) <= 0.0 and float(enemy.get("stun", 0.0)) <= 0.0 and int(enemy.hp) > 0)
+	var candidates := enemies.filter(func(enemy: Dictionary) -> bool: return enemy.kind != "commander" and not str(enemy.kind).begins_with("mid_") and float(enemy.get("dive", 0.0)) <= 0.0 and float(enemy.get("stun", 0.0)) <= 0.0 and int(enemy.hp) > 0 and not is_entering(enemy))
 	var count := mini(candidates.size(), 2 + stage_index / 2 + int(difficulty > 1.2))
 	for i in range(count):
 		var pick: Dictionary = candidates[randi() % candidates.size()]

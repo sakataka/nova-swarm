@@ -10,6 +10,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	_test_beat_clock_follows_jittery_audio()
 	var manager := AudioManager.new()
 	root.add_child(manager)
 	# Exercise the real imported streams and players with the Dummy audio driver.
@@ -69,6 +70,39 @@ func _run() -> void:
 	await create_timer(0.15).timeout
 	print("AUDIO_TEST_RESULT failures=", failures)
 	quit(1 if failures else 0)
+
+
+# Web playback positions jitter and the loop length is not a whole number of
+# beats. The clock must still only move forward and tick once per beat.
+func _test_beat_clock_follows_jittery_audio() -> void:
+	var clock = BeatClockScript.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var dt := 1.0 / 60.0
+	var loop_length := 59.75
+	var audio_time := 0.37
+	var monotonic := true
+	var ticks := 0
+	var shortest_gap := 99.0
+	var since_tick := 0.0
+	for frame in range(60 * 90):
+		audio_time += dt
+		var reported := fposmod(audio_time + rng.randf_range(-0.04, 0.04), loop_length)
+		var before: float = clock.beat
+		clock.update(dt, "stage_drive", reported)
+		monotonic = monotonic and clock.beat >= before
+		since_tick += dt
+		if clock.ticked:
+			ticks += 1
+			if frame > 120:
+				shortest_gap = minf(shortest_gap, since_tick)
+			since_tick = 0.0
+	var seconds_per_beat: float = clock.seconds_per_beat()
+	_assert(monotonic, "beat clock never runs backwards")
+	_assert(shortest_gap > seconds_per_beat * 0.5, "beat clock never double-ticks")
+	_assert(absi(ticks - int(90.0 / seconds_per_beat)) <= 3, "beat clock keeps the tempo")
+	var phase_error := absf(wrapf(fposmod(audio_time, loop_length) / seconds_per_beat - clock.beat, -0.5, 0.5))
+	_assert(phase_error < 0.12, "beat clock stays locked to the audio phase")
 
 
 func _assert(condition: bool, label: String) -> void:
