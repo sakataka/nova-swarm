@@ -24,18 +24,18 @@ const SFX_INTERVALS := {
 }
 
 const MUSIC_PATHS := {
-	"title": "res://public/assets/audio/music/title_neon_loop.wav",
-	"stage_drive": "res://public/assets/audio/music/stage_drive_loop.wav",
-	"stage_pressure": "res://public/assets/audio/music/stage_pressure_loop.wav",
-	"boss_core": "res://public/assets/audio/music/boss_core_loop.wav",
-	"victory_clear": "res://public/assets/audio/music/victory_clear_loop.wav",
-	"game_over": "res://public/assets/audio/music/game_over_loop.wav",
+	"title": "res://public/assets/audio/music/title.wav",
+	"stage_drive": "res://public/assets/audio/music/stage_drive.wav",
+	"stage_pressure": "res://public/assets/audio/music/stage_pressure.wav",
+	"boss_core": "res://public/assets/audio/music/boss_core.wav",
+	"victory_clear": "res://public/assets/audio/music/victory_clear.wav",
+	"game_over": "res://public/assets/audio/music/game_over.wav",
 }
 
 const OVERDRIVE_LAYER_SETTINGS := {
-	"stage_drive": {"root": 220.0, "energy": 0.75, "volume": -21.0},
-	"stage_pressure": {"root": 277.18, "energy": 0.92, "volume": -20.0},
-	"boss_core": {"root": 164.81, "energy": 1.0, "volume": -19.0},
+	"stage_drive": {"path": "res://public/assets/audio/music/overdrive_drive.wav", "volume": -21.0},
+	"stage_pressure": {"path": "res://public/assets/audio/music/overdrive_pressure.wav", "volume": -20.0},
+	"boss_core": {"path": "res://public/assets/audio/music/overdrive_boss.wav", "volume": -19.0},
 }
 
 var muted := false
@@ -254,7 +254,10 @@ func _setup_music() -> void:
 			_prepare_loop(stream)
 			music_streams[music_key] = stream
 	for music_key in OVERDRIVE_LAYER_SETTINGS.keys():
-		overdrive_music_streams[music_key] = _make_overdrive_music_layer(music_key)
+		var stream: AudioStream = load(OVERDRIVE_LAYER_SETTINGS[music_key].path)
+		if stream:
+			_prepare_loop(stream)
+			overdrive_music_streams[music_key] = stream
 
 	for i in range(2):
 		var player := AudioStreamPlayer.new()
@@ -488,12 +491,18 @@ func _sync_overdrive_fallback(should_play: bool, fade_time: float) -> void:
 	if _overdrive_music_player.stream != overdrive_music_streams[current_music_key]:
 		_overdrive_music_player.stream = overdrive_music_streams[current_music_key]
 		_prepare_loop(_overdrive_music_player.stream)
-		_overdrive_music_player.play()
+		_play_overdrive_from_music_position()
 	elif not _overdrive_music_player.playing:
-		_overdrive_music_player.play()
+		_play_overdrive_from_music_position()
 	var target_volume := MUSIC_DUCK_DB if _music_ducked else OVERDRIVE_FALLBACK_VOLUME_DB
 	_overdrive_fade_tween = create_tween()
 	_overdrive_fade_tween.tween_property(_overdrive_music_player, "volume_db", target_volume, maxf(0.01, fade_time))
+
+
+func _play_overdrive_from_music_position() -> void:
+	var duration := _overdrive_music_player.stream.get_length()
+	var position := maxf(0.0, get_music_position())
+	_overdrive_music_player.play(fposmod(position, duration) if duration > 0.0 else 0.0)
 
 
 func _play_stream(stream: AudioStream, volume_db: float, pitch_variance := 0.0) -> void:
@@ -581,31 +590,6 @@ func _make_pickup_tone(root: float, duration: float, volume: float) -> AudioStre
 		var sample: float = sin(TAU * freq * t) * 0.7 + sin(TAU * freq * 2.0 * t) * 0.2
 		_write_sample(data, i, sample * pow(1.0 - p, 1.4) * volume)
 	return _make_wav(data, mix_rate)
-
-
-func _make_overdrive_music_layer(music_key: String) -> AudioStreamWAV:
-	var setting: Dictionary = OVERDRIVE_LAYER_SETTINGS[music_key]
-	var root := float(setting.root)
-	var energy := float(setting.energy)
-	var mix_rate := 22050
-	var duration := 4.0
-	var frames := int(duration * mix_rate)
-	var data := PackedByteArray()
-	data.resize(frames * 2)
-	for i in range(frames):
-		var t := float(i) / mix_rate
-		var beat := fmod(t * 2.0, 1.0)
-		var sixteenth := fmod(t * 8.0, 1.0)
-		var pulse := pow(maxf(0.0, 1.0 - beat * 3.8), 3.0)
-		var hat := (1.0 if sixteenth < 0.42 else -1.0) * pow(1.0 - sixteenth, 1.7)
-		var bass := sin(TAU * root * 0.5 * t) * (0.28 + pulse * 0.42)
-		var octave := sin(TAU * root * 2.0 * t + sin(TAU * t * 0.5) * 0.35) * 0.12
-		var alarm := sin(TAU * root * 3.0 * t) * (0.05 + pulse * 0.06)
-		var sample := (bass + octave + alarm + hat * 0.08) * 0.26 * energy
-		_write_sample(data, i, sample)
-	var stream := _make_wav(data, mix_rate)
-	_prepare_loop(stream)
-	return stream
 
 
 func _write_sample(data: PackedByteArray, index: int, value: float) -> void:

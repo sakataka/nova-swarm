@@ -1,0 +1,461 @@
+{
+  "version": 1,
+  "setId": "18544f70-5c19-4d30-ba67-f6e16b52210f",
+  "project": "Nova Swarm",
+  "direction": "Instrumental anime space-shooter soundtrack. Analog synths, shimmering arpeggios, punchy electronic drums, warm bass. Clear memorable melodies, futuristic heroic atmosphere, no vocals.",
+  "createdAt": "2026-10-03T11:52:13.633Z",
+  "status": "done",
+  "review": "technical-only",
+  "tracks": [
+    {
+      "id": "title",
+      "role": "Launch bay, anticipation before deploying into space",
+      "mood": "Luminous, hopeful, spacious",
+      "status": "done",
+      "variants": [
+        {
+          "index": 1,
+          "status": "done",
+          "file": "title.wav",
+          "jobId": "afd88f1e-425d-4dd6-8c55-3de1140813b7",
+          "input": {
+            "steps": 8,
+            "timeSignature": "",
+            "language": "ja",
+            "shift": 3,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "normalizationDb": -1,
+            "precision": "int8",
+            "title": "Nova Swarm / title",
+            "prompt": "Instrumental anime space-shooter soundtrack. Analog synths, shimmering arpeggios, punchy electronic drums, warm bass. Clear memorable melodies, futuristic heroic atmosphere, no vocals.. memorable title theme. Launch bay, anticipation before deploying into space. Luminous, hopeful, spacious. moderate energy. steady continuous arrangement suitable for looping",
+            "duration": 60,
+            "bpm": 116,
+            "key": "A minor",
+            "seed": 171078226,
+            "instrumental": true,
+            "lyrics": "",
+            "structure": "[Intro]\n[Main Theme]\n[Main Theme - reprise]",
+            "lm": true
+          },
+          "checks": {
+            "sampleRate": 48000,
+            "channels": 2,
+            "seconds": 59.75,
+            "peak": 0.891265869140625,
+            "rms": 0.12758061548792018,
+            "clippedSamples": 0,
+            "boundaryJump": 0.00482177734375
+          },
+          "sourceSeconds": 60,
+          "loop": {
+            "start": 0,
+            "end": 59.75,
+            "method": "overlap-crossfade",
+            "crossfadeSeconds": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "stage_drive",
+      "role": "Early fleet battles, agile flight and resonant chain explosions",
+      "mood": "Propulsive, adventurous, bright",
+      "status": "done",
+      "variants": [
+        {
+          "index": 1,
+          "status": "done",
+          "file": "stage_drive.wav",
+          "jobId": "5541ec03-060e-4d5a-b3c4-d7a3ca327b9d",
+          "input": {
+            "steps": 8,
+            "timeSignature": "",
+            "language": "ja",
+            "shift": 3,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "normalizationDb": -1,
+            "precision": "int8",
+            "title": "Nova Swarm / stage_drive",
+            "prompt": "Instrumental anime space-shooter soundtrack. Analog synths, shimmering arpeggios, punchy electronic drums, warm bass. Clear memorable melodies, futuristic heroic atmosphere, no vocals.. driving rhythmic battle music. Early fleet battles, agile flight and resonant chain explosions. Propulsive, adventurous, bright. high energy. steady continuous arrangement suitable for looping",
+            "duration": 60,
+            "bpm": 132,
+            "key": "A minor",
+            "seed": 1169079389,
+            "instrumental": true,
+            "lyrics": "",
+            "structure": "[Main Theme]\n[Intense Variation]\n[Main Theme]",
+            "lm": true
+          },
+          "checks": {
+            "sampleRate": 48000,
+            "channels": 2,
+            "seconds": 59.75,
+            "peak": 0.891265869140625,
+            "rms": 0.16870343059571713,
+            "clippedSamples": 0,
+            "boundaryJump": 0
+          },
+          "sourceSeconds": 60,
+          "loop": {
+            "start": 0,
+            "end": 59.75,
+            "method": "overlap-crossfade",
+            "crossfadeSeconds": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "stage_pressure",
+      "role": "Late battles through hostile nebulae, escalating enemy swarms",
+      "mood": "Fast, tense, determined",
+      "status": "done",
+      "variants": [
+        {
+          "index": 1,
+          "status": "done",
+          "file": "stage_pressure.wav",
+          "jobId": "c787d5d8-7ed7-4d47-b95a-cc5aacecbe23",
+          "input": {
+            "steps": 8,
+            "timeSignature": "",
+            "language": "ja",
+            "shift": 3,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "normalizationDb": -1,
+            "precision": "int8",
+            "title": "Nova Swarm / stage_pressure",
+            "prompt": "Instrumental anime space-shooter soundtrack. Analog synths, shimmering arpeggios, punchy electronic drums, warm bass. Clear memorable melodies, futuristic heroic atmosphere, no vocals.. driving rhythmic battle music. Late battles through hostile nebulae, escalating enemy swarms. Fast, tense, determined. high energy. steady continuous arrangement suitable for looping",
+            "duration": 60,
+            "bpm": 162,
+            "key": "C minor",
+            "seed": 1759884325,
+            "instrumental": true,
+            "lyrics": "",
+            "structure": "[Main Theme]\n[Intense Variation]\n[Main Theme]",
+            "lm": true
+          },
+          "checks": {
+            "sampleRate": 48000,
+            "channels": 2,
+            "seconds": 59.75,
+            "peak": 0.891265869140625,
+            "rms": 0.20863997026224396,
+            "clippedSamples": 0,
+            "boundaryJump": 0.006561279296875
+          },
+          "sourceSeconds": 60,
+          "loop": {
+            "start": 0,
+            "end": 59.75,
+            "method": "overlap-crossfade",
+            "crossfadeSeconds": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "boss_core",
+      "role": "Final battle against a colossal mechanical reactor fortress",
+      "mood": "Heavy, menacing, heroic defiance",
+      "status": "done",
+      "variants": [
+        {
+          "index": 1,
+          "status": "done",
+          "file": "boss_core.wav",
+          "jobId": "86b221bd-448d-4e30-a004-64af686dc049",
+          "input": {
+            "steps": 8,
+            "timeSignature": "",
+            "language": "ja",
+            "shift": 3,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "normalizationDb": -1,
+            "precision": "int8",
+            "title": "Nova Swarm / boss_core",
+            "prompt": "Instrumental anime space-shooter soundtrack. Analog synths, shimmering arpeggios, punchy electronic drums, warm bass. Clear memorable melodies, futuristic heroic atmosphere, no vocals.. dramatic urgent boss battle music. Final battle against a colossal mechanical reactor fortress. Heavy, menacing, heroic defiance. high energy. steady continuous arrangement suitable for looping",
+            "duration": 60,
+            "bpm": 140,
+            "key": "E minor",
+            "seed": 1449652993,
+            "instrumental": true,
+            "lyrics": "",
+            "structure": "[Main Theme]\n[Escalation]\n[Climax]",
+            "lm": true
+          },
+          "checks": {
+            "sampleRate": 48000,
+            "channels": 2,
+            "seconds": 59.75,
+            "peak": 0.891265869140625,
+            "rms": 0.23938004232409094,
+            "clippedSamples": 0,
+            "boundaryJump": 0.11932373046875
+          },
+          "sourceSeconds": 60,
+          "loop": {
+            "start": 0,
+            "end": 59.75,
+            "method": "overlap-crossfade",
+            "crossfadeSeconds": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "victory_clear",
+      "role": "Fleet defeated, triumphant return and results screen",
+      "mood": "Radiant, uplifting, relieved",
+      "status": "done",
+      "variants": [
+        {
+          "index": 1,
+          "status": "done",
+          "file": "victory_clear.wav",
+          "jobId": "722796d7-282c-41a9-999a-fbbac4982952",
+          "input": {
+            "steps": 8,
+            "timeSignature": "",
+            "language": "ja",
+            "shift": 3,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "normalizationDb": -1,
+            "precision": "int8",
+            "title": "Nova Swarm / victory_clear",
+            "prompt": "Instrumental anime space-shooter soundtrack. Analog synths, shimmering arpeggios, punchy electronic drums, warm bass. Clear memorable melodies, futuristic heroic atmosphere, no vocals.. brief uplifting victory theme. Fleet defeated, triumphant return and results screen. Radiant, uplifting, relieved. moderate energy. steady continuous arrangement suitable for looping",
+            "duration": 30,
+            "bpm": 132,
+            "key": "C major",
+            "seed": 1878041103,
+            "instrumental": true,
+            "lyrics": "",
+            "structure": "[Fanfare]\n[Resolution]",
+            "lm": true
+          },
+          "checks": {
+            "sampleRate": 48000,
+            "channels": 2,
+            "seconds": 29.75,
+            "peak": 0.891265869140625,
+            "rms": 0.13946780621855945,
+            "clippedSamples": 0,
+            "boundaryJump": 0.000823974609375
+          },
+          "sourceSeconds": 30,
+          "loop": {
+            "start": 0,
+            "end": 29.75,
+            "method": "overlap-crossfade",
+            "crossfadeSeconds": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "game_over",
+      "role": "Ship lost, reflective results screen inviting another sortie",
+      "mood": "Bittersweet, calm, quietly hopeful",
+      "status": "done",
+      "variants": [
+        {
+          "index": 1,
+          "status": "done",
+          "file": "game_over.wav",
+          "jobId": "1d34c0bd-cd2a-4a90-9795-affbcf39b3de",
+          "input": {
+            "steps": 8,
+            "timeSignature": "",
+            "language": "ja",
+            "shift": 3,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "normalizationDb": -1,
+            "precision": "int8",
+            "title": "Nova Swarm / game_over",
+            "prompt": "Instrumental anime space-shooter soundtrack. Analog synths, shimmering arpeggios, punchy electronic drums, warm bass. Clear memorable melodies, futuristic heroic atmosphere, no vocals.. restrained atmospheric background music. Ship lost, reflective results screen inviting another sortie. Bittersweet, calm, quietly hopeful. restrained energy. steady continuous arrangement suitable for looping",
+            "duration": 30,
+            "bpm": 72,
+            "key": "E minor",
+            "seed": 415241687,
+            "instrumental": true,
+            "lyrics": "",
+            "structure": "[Atmosphere]\n[Subtle Variation]",
+            "lm": true
+          },
+          "checks": {
+            "sampleRate": 48000,
+            "channels": 2,
+            "seconds": 29.75,
+            "peak": 0.8912353515625,
+            "rms": 0.1506548325102007,
+            "clippedSamples": 0,
+            "boundaryJump": 0.027618408203125
+          },
+          "sourceSeconds": 30,
+          "loop": {
+            "start": 0,
+            "end": 29.75,
+            "method": "overlap-crossfade",
+            "crossfadeSeconds": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "overdrive_drive",
+      "role": "Percussion-only overlay for early battle Overdrive",
+      "mood": "Urgent rhythmic lift",
+      "status": "done",
+      "variants": [
+        {
+          "index": 1,
+          "status": "done",
+          "file": "overdrive_drive.wav",
+          "jobId": "cc59faa6-3f80-4637-b886-af2abc56e44c",
+          "input": {
+            "steps": 8,
+            "timeSignature": "",
+            "language": "ja",
+            "shift": 3,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "normalizationDb": -1,
+            "precision": "int8",
+            "title": "Nova Swarm / overdrive_drive",
+            "prompt": "Instrumental anime space-shooter soundtrack. Analog synths, shimmering arpeggios, punchy electronic drums, warm bass. Clear memorable melodies, futuristic heroic atmosphere, no vocals.. driving rhythmic battle music. Percussion-only overlay for early battle Overdrive. Urgent rhythmic lift. high energy. Only electronic drums, hats and cymbals. No melody, chords, bass or pitched instruments.. steady continuous arrangement suitable for looping",
+            "duration": 30,
+            "bpm": 132,
+            "key": "",
+            "seed": 566039151,
+            "instrumental": true,
+            "lyrics": "",
+            "structure": "[Main Theme]\n[Intense Variation]\n[Main Theme]",
+            "lm": true
+          },
+          "checks": {
+            "sampleRate": 48000,
+            "channels": 2,
+            "seconds": 29.75,
+            "peak": 0.891265869140625,
+            "rms": 0.1668759322041351,
+            "clippedSamples": 0,
+            "boundaryJump": 0.00030517578125
+          },
+          "sourceSeconds": 30,
+          "loop": {
+            "start": 0,
+            "end": 29.75,
+            "method": "overlap-crossfade",
+            "crossfadeSeconds": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "overdrive_pressure",
+      "role": "Percussion-only overlay for late battle Overdrive",
+      "mood": "Rapid relentless rhythm",
+      "status": "done",
+      "variants": [
+        {
+          "index": 1,
+          "status": "done",
+          "file": "overdrive_pressure.wav",
+          "jobId": "b96a6ff7-410e-4bb5-aa3f-dd2a26498d51",
+          "input": {
+            "steps": 8,
+            "timeSignature": "",
+            "language": "ja",
+            "shift": 3,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "normalizationDb": -1,
+            "precision": "int8",
+            "title": "Nova Swarm / overdrive_pressure",
+            "prompt": "Instrumental anime space-shooter soundtrack. Analog synths, shimmering arpeggios, punchy electronic drums, warm bass. Clear memorable melodies, futuristic heroic atmosphere, no vocals.. driving rhythmic battle music. Percussion-only overlay for late battle Overdrive. Rapid relentless rhythm. high energy. Only electronic drums, hats and cymbals. No melody, chords, bass or pitched instruments.. steady continuous arrangement suitable for looping",
+            "duration": 30,
+            "bpm": 162,
+            "key": "",
+            "seed": 1404170741,
+            "instrumental": true,
+            "lyrics": "",
+            "structure": "[Main Theme]\n[Intense Variation]\n[Main Theme]",
+            "lm": true
+          },
+          "checks": {
+            "sampleRate": 48000,
+            "channels": 2,
+            "seconds": 29.75,
+            "peak": 0.8912353515625,
+            "rms": 0.1665478482313508,
+            "clippedSamples": 0,
+            "boundaryJump": 0.032501220703125
+          },
+          "sourceSeconds": 30,
+          "loop": {
+            "start": 0,
+            "end": 29.75,
+            "method": "overlap-crossfade",
+            "crossfadeSeconds": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "overdrive_boss",
+      "role": "Percussion-only overlay for final boss Overdrive",
+      "mood": "Thunderous mechanical rhythm",
+      "status": "done",
+      "variants": [
+        {
+          "index": 1,
+          "status": "done",
+          "file": "overdrive_boss.wav",
+          "jobId": "be118719-ba6b-49c9-ba00-35d36db36679",
+          "input": {
+            "steps": 8,
+            "timeSignature": "",
+            "language": "ja",
+            "shift": 3,
+            "fadeIn": 0,
+            "fadeOut": 0,
+            "normalizationDb": -1,
+            "precision": "int8",
+            "title": "Nova Swarm / overdrive_boss",
+            "prompt": "Instrumental anime space-shooter soundtrack. Analog synths, shimmering arpeggios, punchy electronic drums, warm bass. Clear memorable melodies, futuristic heroic atmosphere, no vocals.. dramatic urgent boss battle music. Percussion-only overlay for final boss Overdrive. Thunderous mechanical rhythm. high energy. Only electronic drums, toms and cymbals. No melody, chords, bass or pitched instruments.. steady continuous arrangement suitable for looping",
+            "duration": 30,
+            "bpm": 140,
+            "key": "",
+            "seed": 1767578147,
+            "instrumental": true,
+            "lyrics": "",
+            "structure": "[Main Theme]\n[Escalation]\n[Climax]",
+            "lm": true
+          },
+          "checks": {
+            "sampleRate": 48000,
+            "channels": 2,
+            "seconds": 29.75,
+            "peak": 0.891265869140625,
+            "rms": 0.11547898905247034,
+            "clippedSamples": 0,
+            "boundaryJump": 0.003509521484375
+          },
+          "sourceSeconds": 30,
+          "loop": {
+            "start": 0,
+            "end": 29.75,
+            "method": "overlap-crossfade",
+            "crossfadeSeconds": 0.25
+          }
+        }
+      ]
+    }
+  ]
+}

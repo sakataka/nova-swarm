@@ -135,8 +135,31 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 
 世界観・各素材の制作指示と配置は [ビジュアル制作仕様](docs/visual-refresh.md) に記録しています。旧画像は履歴参照用として残していますが、ゲームの描画では読み込みません。
 
-- `public/assets/audio/music/*.wav`: タイトル、通常戦、後半戦、ボス、勝利、ゲームオーバー用のオリジナルBGM。タイトル（116 BPM）、序盤通常戦（132 BPM）、ボス戦（140 BPM）はLogical BGMで再制作した48 kHzステレオ音源で、役割ごとにモチーフ、グルーヴ、音色、展開、ダイナミクスを分けています。
-- `scripts/tools/generate_music.py`: 後半戦、勝利、ゲームオーバーを含む従来ループを決定的に再生成する標準ライブラリのみの音源生成スクリプト
+- `public/assets/audio/music/*.wav`: Music Creator（ACE-Step / MLX）で制作したBGM6曲とOverdrive用追加レイヤー3曲。アナログシンセ、アルペジオ、電子ドラムを軸に、アニメ宇宙戦の雰囲気へ統一しています。効果音は従来どおりです。
+- `bgm-request.json`: 全9曲の用途・曲調・指定BPMを記録した制作依頼。
+- `public/assets/audio/music/manifest.json`: セットID、生成条件、納品ファイル名、音声の技術検査、ループ区間。生成時の指定BPMをビート時計にも使用しますが、生成音声の拍位置・テンポの厳密な一致は保証されません。
+
+| ファイル | 場面 | 指定BPM | 生成尺 |
+| --- | --- | --- | --- |
+| `title.wav` | 発進前の期待感を出すタイトル | 116 | 60秒 |
+| `stage_drive.wav` | 序盤の通常戦 | 132 | 60秒 |
+| `stage_pressure.wav` | 3〜5面の後半戦 | 162 | 60秒 |
+| `boss_core.wav` | 6面の最終ボス | 140 | 60秒 |
+| `victory_clear.wav` | 全面クリアの結果画面 | 132 | 30秒 |
+| `game_over.wav` | ゲームオーバーの結果画面 | 72 | 30秒 |
+| `overdrive_drive.wav` | 序盤戦のOverdrive追加レイヤー | 132 | 30秒 |
+| `overdrive_pressure.wav` | 後半戦のOverdrive追加レイヤー | 162 | 30秒 |
+| `overdrive_boss.wav` | ボス戦のOverdrive追加レイヤー | 140 | 30秒 |
+
+全曲をループ再生します。Music Creatorで先頭と末尾を0.25秒重ねて継ぎ目をならすため、納品尺は生成尺より0.25秒短くなります。音楽的なつながりの自然さは技術検査では判定されません。Overdriveレイヤーは打楽器中心で依頼し、開始時に本編BGMの再生位置をレイヤーの尺へ折り返して合わせます。別々に生成した音源のため、拍やフレーズの完全一致を保証するものではありません。
+
+再取得は `music-create` スキルのCLIで行えます。セットIDはmanifestを参照してください。同じ依頼の送信は既存セットを返します。
+
+```bash
+bun run --cwd /Users/sakataka/Documents/music-creator music-create submit "$PWD/bgm-request.json"
+bun run --cwd /Users/sakataka/Documents/music-creator music-create status <set-id> --wait
+bun run --cwd /Users/sakataka/Documents/music-creator music-create fetch <set-id> --out "$PWD/public/assets/audio/music"
+```
 
 ## ゲーム品質改善
 
@@ -146,7 +169,7 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 - スコアチェイン、ノーミスステージボーナス、成績に応じた軽い難易度補正を追加しています。
 - 敵弾のかすり、連続撃破、ボスヒットで溜まるResonanceゲージと、満タン時に発動できるOverdriveを追加しています。Overdriveはプレイ時間の約2割だけ発動する切り札として、ゲージの獲得量と延長量を調整しています。
 - Overdrive中に敵弾をスコア結晶へ変換し、攻撃的な回避に得点上の価値を持たせています。
-- Overdrive中はResonateのBGM stemを有効化し、通常戦、後半戦、ボス戦それぞれで専用レイヤーが重なってテンションが上がります。
+- Overdrive中は通常戦、後半戦、ボス戦それぞれの生成済み追加レイヤーを重ねてテンションを上げます。通常の再生経路はAudioStreamPlayerで、Resonate経路でも同じ音源をstemとして利用できます。
 - BGMは単一の再生経路で確実にループし、通常時・Overdrive時・ポーズ時の音量差を明確にしています。duck解除や曲切り替えは短いフェードで処理し、SFXの短時間連打とMasterバスのピークも抑えています。
 - Web版はタブを閉じる、別アプリへ移る、画面を非表示にするなどの終了・バックグラウンド操作でBGMと効果音を停止し、ゲーム画面へ戻った場合だけ現在のBGMを再開します。
 - Web版のタイトル曲は画面表示時に再生を要求し、ブラウザの自動再生制限で保留された場合も、最初のクリック、タッチ、キー、ゲームパッド入力時に再要求します。
@@ -175,6 +198,12 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 - ボスと岩への命中処理で、弾を消した後の座標を使っていたため部位破壊が発生しなかった不具合を修正しています。
 
 ## 検証
+
+音楽の読み込み・9音源の末尾ループ・Overdrive再生位置・ミュート・バックグラウンド復帰（Dummy音声ドライバーでの機能検証。試聴は別途必要）:
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --display-driver headless --rendering-driver dummy --audio-driver Dummy --path . --script res://scripts/audio_test.gd --log-file /private/tmp/nova-swarm-audio.log
+```
 
 スモークテスト:
 

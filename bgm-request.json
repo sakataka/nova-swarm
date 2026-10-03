@@ -1,0 +1,15 @@
+{
+  "project": "Nova Swarm",
+  "direction": "Instrumental anime space-shooter soundtrack. Analog synths, shimmering arpeggios, punchy electronic drums, warm bass. Clear memorable melodies, futuristic heroic atmosphere, no vocals.",
+  "tracks": [
+    {"id": "title", "role": "Launch bay, anticipation before deploying into space", "recipe": "title", "mood": "Luminous, hopeful, spacious", "energy": "medium", "duration": 60, "loop": true, "bpm": 116, "key": "A minor"},
+    {"id": "stage_drive", "role": "Early fleet battles, agile flight and resonant chain explosions", "recipe": "battle", "mood": "Propulsive, adventurous, bright", "energy": "high", "duration": 60, "loop": true, "bpm": 132, "key": "A minor"},
+    {"id": "stage_pressure", "role": "Late battles through hostile nebulae, escalating enemy swarms", "recipe": "battle", "mood": "Fast, tense, determined", "energy": "high", "duration": 60, "loop": true, "bpm": 162, "key": "C minor"},
+    {"id": "boss_core", "role": "Final battle against a colossal mechanical reactor fortress", "recipe": "boss", "mood": "Heavy, menacing, heroic defiance", "energy": "high", "duration": 60, "loop": true, "bpm": 140, "key": "E minor"},
+    {"id": "victory_clear", "role": "Fleet defeated, triumphant return and results screen", "recipe": "victory", "mood": "Radiant, uplifting, relieved", "energy": "medium", "duration": 30, "loop": true, "bpm": 132, "key": "C major"},
+    {"id": "game_over", "role": "Ship lost, reflective results screen inviting another sortie", "recipe": "ambient", "mood": "Bittersweet, calm, quietly hopeful", "energy": "low", "duration": 30, "loop": true, "bpm": 72, "key": "E minor"},
+    {"id": "overdrive_drive", "role": "Percussion-only overlay for early battle Overdrive", "recipe": "battle", "mood": "Urgent rhythmic lift", "prompt": "Only electronic drums, hats and cymbals. No melody, chords, bass or pitched instruments.", "energy": "high", "duration": 30, "loop": true, "bpm": 132},
+    {"id": "overdrive_pressure", "role": "Percussion-only overlay for late battle Overdrive", "recipe": "battle", "mood": "Rapid relentless rhythm", "prompt": "Only electronic drums, hats and cymbals. No melody, chords, bass or pitched instruments.", "energy": "high", "duration": 30, "loop": true, "bpm": 162},
+    {"id": "overdrive_boss", "role": "Percussion-only overlay for final boss Overdrive", "recipe": "boss", "mood": "Thunderous mechanical rhythm", "prompt": "Only electronic drums, toms and cymbals. No melody, chords, bass or pitched instruments.", "energy": "high", "duration": 30, "loop": true, "bpm": 140}
+  ]
+}
