@@ -5,11 +5,7 @@ const MUSIC_BANK_LABEL := "nova_swarm"
 const USE_RESONATE_MUSIC := false
 const MUSIC_VOLUME_DB := -14.0
 const MUSIC_DUCK_DB := -20.0
-const MUSIC_OVERDRIVE_DB := -10.0
 const MUSIC_FADE_TIME := 1.25
-const OVERDRIVE_STEM_NAME := "overdrive"
-const OVERDRIVE_STEM_FADE_TIME := 0.38
-const OVERDRIVE_FALLBACK_VOLUME_DB := -22.0
 const MUSIC_VOLUME_TWEEN_TIME := 0.25
 const SFX_MIN_INTERVAL_MS := 70
 const SFX_INTERVALS := {
@@ -32,28 +28,19 @@ const MUSIC_PATHS := {
 	"game_over": "res://public/assets/audio/music/game_over.wav",
 }
 
-const OVERDRIVE_LAYER_SETTINGS := {
-	"stage_drive": {"path": "res://public/assets/audio/music/overdrive_drive.wav", "volume": -21.0},
-	"stage_pressure": {"path": "res://public/assets/audio/music/overdrive_pressure.wav", "volume": -20.0},
-	"boss_core": {"path": "res://public/assets/audio/music/overdrive_boss.wav", "volume": -19.0},
-}
 
 var muted := false
 var current_music_key := ""
 var audio_players: Array[AudioStreamPlayer] = []
 var sfx_streams: Dictionary = {}
 var music_streams: Dictionary = {}
-var overdrive_music_streams: Dictionary = {}
 var _music_players: Array[AudioStreamPlayer] = []
-var _overdrive_music_player: AudioStreamPlayer
 var _volume_tween: Tween
-var _overdrive_fade_tween: Tween
 var _active_music_player := 0
 var _fade_time := 0.0
 var _fade_elapsed := 0.0
 var _previous_volume_db := -80.0
 var _music_ducked := false
-var _music_overdriven := false
 var _shutting_down := false
 var _enabled := true
 var _app_active := true
@@ -84,12 +71,9 @@ func shutdown() -> void:
 		_free_player(player)
 	for player in _music_players:
 		_free_player(player)
-	if _overdrive_music_player:
-		_free_player(_overdrive_music_player)
 	audio_players.clear()
 	_music_players.clear()
 	sfx_streams.clear()
-	overdrive_music_streams.clear()
 	if _music_bank and is_instance_valid(_music_bank) and _music_bank.get_parent() == self:
 		remove_child(_music_bank)
 		_music_bank.free()
@@ -138,12 +122,6 @@ func set_music_ducked(ducked: bool) -> void:
 	_apply_music_volume()
 
 
-func set_music_overdriven(overdriven: bool) -> void:
-	if _music_overdriven == overdriven:
-		return
-	_music_overdriven = overdriven
-	_apply_music_volume()
-	_sync_overdrive_layer(OVERDRIVE_STEM_FADE_TIME)
 
 
 func set_app_active(active: bool) -> void:
@@ -154,7 +132,6 @@ func set_app_active(active: bool) -> void:
 		for player in audio_players:
 			player.stop()
 		_stop_music_players()
-		_stop_overdrive_fallback()
 		if _resonate_manager and _resonate_manager.has_method("stop"):
 			_resonate_manager.call("stop", 0.0)
 		return
@@ -173,7 +150,6 @@ func toggle_mute() -> void:
 		for player in audio_players:
 			player.stop()
 		_stop_music_players()
-		_stop_overdrive_fallback()
 		if _resonate_manager and _resonate_manager.has_method("stop"):
 			_resonate_manager.call("stop", 0.15)
 		return
@@ -215,8 +191,6 @@ func play_sfx(sfx_name: String) -> void:
 	_play_stream(sfx_streams[sfx_name], volume, pitch_variance)
 
 
-func has_overdrive_music_layer(music_key: String) -> bool:
-	return OVERDRIVE_LAYER_SETTINGS.has(music_key)
 
 
 func _setup_sfx() -> void:
@@ -253,11 +227,6 @@ func _setup_music() -> void:
 		if stream:
 			_prepare_loop(stream)
 			music_streams[music_key] = stream
-	for music_key in OVERDRIVE_LAYER_SETTINGS.keys():
-		var stream: AudioStream = load(OVERDRIVE_LAYER_SETTINGS[music_key].path)
-		if stream:
-			_prepare_loop(stream)
-			overdrive_music_streams[music_key] = stream
 
 	for i in range(2):
 		var player := AudioStreamPlayer.new()
@@ -266,12 +235,6 @@ func _setup_music() -> void:
 		player.finished.connect(_on_fallback_music_finished.bind(player))
 		add_child(player)
 		_music_players.append(player)
-
-	_overdrive_music_player = AudioStreamPlayer.new()
-	_overdrive_music_player.bus = "Music"
-	_overdrive_music_player.volume_db = -80.0
-	_overdrive_music_player.finished.connect(_on_overdrive_fallback_finished)
-	add_child(_overdrive_music_player)
 
 	if not USE_RESONATE_MUSIC:
 		return
@@ -317,9 +280,6 @@ func _create_resonate_bank() -> void:
 	var tracks: Array[MusicTrackResource] = []
 	for music_key in music_streams.keys():
 		var stems: Array[MusicStemResource] = [_make_music_stem("main", music_streams[music_key], true, 0.0)]
-		if overdrive_music_streams.has(music_key):
-			var setting: Dictionary = OVERDRIVE_LAYER_SETTINGS[music_key]
-			stems.append(_make_music_stem(OVERDRIVE_STEM_NAME, overdrive_music_streams[music_key], false, float(setting.volume)))
 
 		var track := MusicTrackResource.new()
 		track.name = music_key
@@ -352,7 +312,6 @@ func _try_play_resonate(fade_time: float) -> bool:
 	var played: bool = _resonate_manager.call("play", MUSIC_BANK_LABEL, _pending_music_key, fade_time, false)
 	if played:
 		_pending_music_key = ""
-		_sync_overdrive_layer(0.08)
 	return played
 
 
@@ -375,7 +334,6 @@ func _play_fallback_music(music_key: String, fade_time: float) -> void:
 	_fade_time = maxf(0.01, fade_time)
 	_fade_elapsed = 0.0
 	_pending_music_key = ""
-	_sync_overdrive_layer(minf(OVERDRIVE_STEM_FADE_TIME, fade_time))
 
 
 func _update_fallback_fade(dt: float) -> void:
@@ -402,17 +360,11 @@ func _apply_music_volume() -> void:
 		_kill_volume_tween()
 		_volume_tween = create_tween()
 		_volume_tween.tween_property(_music_players[_active_music_player], "volume_db", volume, MUSIC_VOLUME_TWEEN_TIME)
-	if _overdrive_music_player and _overdrive_music_player.playing:
-		if _overdrive_fade_tween and _overdrive_fade_tween.is_running():
-			_overdrive_fade_tween.kill()
-		_overdrive_fade_tween = create_tween()
-		_overdrive_fade_tween.tween_property(_overdrive_music_player, "volume_db", MUSIC_DUCK_DB if _music_ducked else OVERDRIVE_FALLBACK_VOLUME_DB, MUSIC_VOLUME_TWEEN_TIME)
 
 
 func _target_music_volume() -> float:
-	if _music_ducked:
-		return MUSIC_DUCK_DB
-	return MUSIC_OVERDRIVE_DB if _music_overdriven else MUSIC_VOLUME_DB
+	# Overdrive changes the visuals only; the BGM keeps its normal level.
+	return MUSIC_DUCK_DB if _music_ducked else MUSIC_VOLUME_DB
 
 
 func _prepare_loop(stream: AudioStream) -> void:
@@ -427,9 +379,6 @@ func _on_fallback_music_finished(player: AudioStreamPlayer) -> void:
 		player.play()
 
 
-func _on_overdrive_fallback_finished() -> void:
-	if _overdrive_music_player and _overdrive_music_player.stream and not muted and _music_overdriven and _app_active:
-		_overdrive_music_player.play()
 
 
 func _stop_music_players() -> void:
@@ -444,12 +393,6 @@ func _kill_volume_tween() -> void:
 		_volume_tween.kill()
 
 
-func _stop_overdrive_fallback() -> void:
-	if _overdrive_fade_tween and _overdrive_fade_tween.is_running():
-		_overdrive_fade_tween.kill()
-	if _overdrive_music_player:
-		_overdrive_music_player.stop()
-		_overdrive_music_player.volume_db = -80.0
 
 
 func _make_music_stem(stem_name: String, stream: AudioStream, enabled: bool, volume_db: float) -> MusicStemResource:
@@ -461,48 +404,10 @@ func _make_music_stem(stem_name: String, stream: AudioStream, enabled: bool, vol
 	return stem
 
 
-func _sync_overdrive_layer(fade_time: float) -> void:
-	var should_play := _music_overdriven and current_music_key in OVERDRIVE_LAYER_SETTINGS and not muted and _enabled and _app_active
-	var current_track_has_layer := current_music_key in OVERDRIVE_LAYER_SETTINGS
-	if _resonate_ready and current_track_has_layer and _resonate_manager and _resonate_manager.has_method("enable_stem"):
-		if should_play:
-			_resonate_manager.call("enable_stem", OVERDRIVE_STEM_NAME, fade_time)
-		elif _resonate_manager.has_method("disable_stem"):
-			_resonate_manager.call("disable_stem", OVERDRIVE_STEM_NAME, fade_time)
-	if not _resonate_ready:
-		_sync_overdrive_fallback(should_play, fade_time)
-	else:
-		_stop_overdrive_fallback()
 
 
-func _sync_overdrive_fallback(should_play: bool, fade_time: float) -> void:
-	if not _overdrive_music_player:
-		return
-	if _overdrive_fade_tween and _overdrive_fade_tween.is_running():
-		_overdrive_fade_tween.kill()
-	if not should_play:
-		if _overdrive_music_player.playing:
-			_overdrive_fade_tween = create_tween()
-			_overdrive_fade_tween.tween_property(_overdrive_music_player, "volume_db", -80.0, maxf(0.01, fade_time))
-			_overdrive_fade_tween.finished.connect(func() -> void: _overdrive_music_player.stop())
-		return
-	if not overdrive_music_streams.has(current_music_key):
-		return
-	if _overdrive_music_player.stream != overdrive_music_streams[current_music_key]:
-		_overdrive_music_player.stream = overdrive_music_streams[current_music_key]
-		_prepare_loop(_overdrive_music_player.stream)
-		_play_overdrive_from_music_position()
-	elif not _overdrive_music_player.playing:
-		_play_overdrive_from_music_position()
-	var target_volume := MUSIC_DUCK_DB if _music_ducked else OVERDRIVE_FALLBACK_VOLUME_DB
-	_overdrive_fade_tween = create_tween()
-	_overdrive_fade_tween.tween_property(_overdrive_music_player, "volume_db", target_volume, maxf(0.01, fade_time))
 
 
-func _play_overdrive_from_music_position() -> void:
-	var duration := _overdrive_music_player.stream.get_length()
-	var position := maxf(0.0, get_music_position())
-	_overdrive_music_player.play(fposmod(position, duration) if duration > 0.0 else 0.0)
 
 
 func _play_stream(stream: AudioStream, volume_db: float, pitch_variance := 0.0) -> void:

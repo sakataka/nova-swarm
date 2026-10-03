@@ -74,7 +74,7 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 - `beat_clock.gd`: 再生中BGMのBPMに合わせたビート時計。ゲーム時間で進め、実際に音が出ている場合は再生位置との差に応じてテンポを最大±60%まで曲げて位相を合わせます。拍が逆戻りしないため、Web版の再生位置の揺れでも拍の二重発火や光の明滅が起きません
 - `resonance_network.gd`: 敵編隊の共鳴リンク、サージの伝播、連鎖数、指揮艦撃破時のネットワーク崩壊
 - `ai_pilot.gd`: AI Pilotの回避・攻撃判断、性格ごとの重み、観戦オーバーレイ用の思考データ
-- `audio_manager.gd`: 多層インパクトSFX、連打抑制、ピッチ揺らぎ、Overdrive用BGMレイヤー、クロスフェード、ミュート、Masterリミッター、headless時の音声無効化
+- `audio_manager.gd`: 多層インパクトSFX、連打抑制、ピッチ揺らぎ、クロスフェード、ミュート、Masterリミッター、headless時の音声無効化
 
 ## 主なゲームシステム
 
@@ -137,7 +137,7 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 
 世界観・各素材の制作指示と配置は [ビジュアル制作仕様](docs/visual-refresh.md) に記録しています。旧画像は履歴参照用として残していますが、ゲームの描画では読み込みません。
 
-- `public/assets/audio/music/*.wav`: Music Creator（ACE-Step / MLX）で制作したBGM6曲とOverdrive用追加レイヤー3曲。アナログシンセ、アルペジオ、電子ドラムを軸に、アニメ宇宙戦の雰囲気へ統一しています。効果音は従来どおりです。
+- `public/assets/audio/music/*.wav`: Music Creator（ACE-Step / MLX）で制作したBGM6曲と、現在は再生しないOverdrive用追加レイヤー3曲。アナログシンセ、アルペジオ、電子ドラムを軸に、アニメ宇宙戦の雰囲気へ統一しています。効果音は従来どおりです。
 - `bgm-request.json`: 全9曲の用途・曲調・指定BPMを記録した制作依頼。
 - `public/assets/audio/music/manifest.json`: セットID、生成条件、納品ファイル名、音声の技術検査、ループ区間。生成時の指定BPMをビート時計にも使用しますが、生成音声の拍位置・テンポの厳密な一致は保証されません。
 
@@ -149,11 +149,11 @@ Godot プロジェクトを Codex / MCP / 自動テストと組み合わせて�
 | `boss_core.wav` | 6面の最終ボス | 140 | 60秒 |
 | `victory_clear.wav` | 全面クリアの結果画面 | 132 | 30秒 |
 | `game_over.wav` | ゲームオーバーの結果画面 | 72 | 30秒 |
-| `overdrive_drive.wav` | 序盤戦のOverdrive追加レイヤー | 132 | 30秒 |
-| `overdrive_pressure.wav` | 後半戦のOverdrive追加レイヤー | 162 | 30秒 |
-| `overdrive_boss.wav` | ボス戦のOverdrive追加レイヤー | 140 | 30秒 |
+| `overdrive_drive.wav` | 序盤戦のOverdrive追加レイヤー（未使用） | 132 | 30秒 |
+| `overdrive_pressure.wav` | 後半戦のOverdrive追加レイヤー（未使用） | 162 | 30秒 |
+| `overdrive_boss.wav` | ボス戦のOverdrive追加レイヤー（未使用） | 140 | 30秒 |
 
-全曲をループ再生します。Music Creatorで先頭と末尾を0.25秒重ねて継ぎ目をならすため、納品尺は生成尺より0.25秒短くなります。音楽的なつながりの自然さは技術検査では判定されません。Overdriveレイヤーは打楽器中心で依頼し、開始時に本編BGMの再生位置をレイヤーの尺へ折り返して合わせます。別々に生成した音源のため、拍やフレーズの完全一致を保証するものではありません。
+全曲をループ再生します。Music Creatorで先頭と末尾を0.25秒重ねて継ぎ目をならすため、納品尺は生成尺より0.25秒短くなります。音楽的なつながりの自然さは技術検査では判定されません。Overdrive用追加レイヤー3曲は制作記録としてリポジトリとmanifestに残していますが、ゲームでは再生せず、Webエクスポートにも含めません。
 
 再取得は `music-create` スキルのCLIで行えます。セットIDはmanifestを参照してください。同じ依頼の送信は既存セットを返します。
 
@@ -171,8 +171,8 @@ bun run --cwd /Users/sakataka/Documents/music-creator music-create fetch <set-id
 - スコアチェイン、ノーミスステージボーナス、成績に応じた軽い難易度補正を追加しています。
 - 敵弾のかすり、連続撃破、ボスヒットで溜まるResonanceゲージと、満タン時に発動できるOverdriveを追加しています。Overdriveはプレイ時間の約2割だけ発動する切り札として、ゲージの獲得量と延長量を調整しています。
 - Overdrive中に敵弾をスコア結晶へ変換し、攻撃的な回避に得点上の価値を持たせています。
-- Overdrive中は通常戦、後半戦、ボス戦それぞれの生成済み追加レイヤーを重ねてテンションを上げます。通常の再生経路はAudioStreamPlayerで、Resonate経路でも同じ音源をstemとして利用できます。
-- BGMは単一の再生経路で確実にループし、通常時・Overdrive時・ポーズ時の音量差を明確にしています。duck解除や曲切り替えは短いフェードで処理し、SFXの短時間連打とMasterバスのピークも抑えています。
+- Overdrive中も BGM の音量と曲は通常時のままにし、追加レイヤーも重ねません。Overdriveは発動音と画面演出（ポッド、粒子、ズーム）で示します。BGMの通常の再生経路はAudioStreamPlayerで、Resonate経路でも同じ音源を利用できます。
+- BGMは単一の再生経路で確実にループし、通常時とポーズ時の音量差を明確にしています。duck解除や曲切り替えは短いフェードで処理し、SFXの短時間連打とMasterバスのピークも抑えています。
 - Web版はタブを閉じる、別アプリへ移る、画面を非表示にするなどの終了・バックグラウンド操作でBGMと効果音を停止し、ゲーム画面へ戻った場合だけ現在のBGMを再開します。
 - Web版のタイトル曲は画面表示時に再生を要求します。ブラウザ（Chrome・Safariなど）はページを開くたびに、ユーザーがクリック・タッチ・キー入力をするまで音声の開始を保留します。この制限はページ側から解除できないため、保留中は `START SOUND` と画面下の `CLICK OR PRESS ANY KEY TO START SOUND` を表示し、ページ上のどこでも最初のクリック・タッチ・キー入力の時点でAudioContextを再開します（Canvasにフォーカスがなくても有効です）。実際に再開してから現在のBGMを再要求します。`START SOUND` を押すためにOFF→ONへ切り替える必要はありません。自動再生が許可されている環境（ブラウザのポリシーで許可したサイトなど）では初めから `SOUND ON` になります。
 - `SOUND ON/OFF`（`M` キー、タイトル・ポーズのボタン）と、ゲーム内で明示的に選んだ `MOTION FULL/LOW` は `user://settings.json` に保存し、次回起動時に引き継ぎます。モーションを選んでいない場合はOSの設定に従います。
@@ -203,7 +203,7 @@ bun run --cwd /Users/sakataka/Documents/music-creator music-create fetch <set-id
 
 ## 検証
 
-音楽の読み込み・9音源の末尾ループ・Overdrive再生位置・ミュート・バックグラウンド復帰（Dummy音声ドライバーでの機能検証。試聴は別途必要）:
+音楽の読み込み・BGM6曲の末尾ループ・ビート時計の追従・ミュート・バックグラウンド復帰（Dummy音声ドライバーでの機能検証。試聴は別途必要）:
 
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --display-driver headless --rendering-driver dummy --audio-driver Dummy --path . --script res://scripts/audio_test.gd --log-file /private/tmp/nova-swarm-audio.log

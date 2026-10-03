@@ -821,7 +821,6 @@ func _return_to_title() -> void:
 	_clear_touch_controls()
 	if overdrive_aura:
 		overdrive_aura.emitting = false
-	audio_manager.set_music_overdriven(false)
 	audio_manager.set_music_ducked(false)
 	audio_manager.play_music("title", 0.25)
 
@@ -872,7 +871,6 @@ func reset() -> void:
 	highlight_strength = 0.0
 	player.reset_run(Config.W / 2.0, Config.PLAYER_Y)
 	state = GameState.PLAYING
-	audio_manager.set_music_overdriven(false)
 	audio_manager.set_music_ducked(false)
 	load_stage(0)
 	audio_manager.play_sfx("clear")
@@ -1136,7 +1134,6 @@ func _update_overdrive_feedback() -> void:
 	if overdrive_aura:
 		overdrive_aura.global_position = Vector2(player.x, player.y + 12.0)
 		overdrive_aura.emitting = active and state == GameState.PLAYING
-	audio_manager.set_music_overdriven(active and state == GameState.PLAYING)
 
 
 func _read_player_command() -> Dictionary:
@@ -1189,7 +1186,6 @@ func _start_overdrive() -> void:
 		if fx:
 			fx.popup(Vector2(player.x, player.y - 96.0), "PERFECT SYNC", Color("#ffe27a"), 24, 1.2)
 			fx.ring(Vector2(player.x, player.y), Color(1.0, 0.88, 0.45, 0.9), 420.0, 0.7, 4.0, 60.0)
-	audio_manager.set_music_overdriven(true)
 	audio_manager.play_sfx("overdrive")
 	_add_shake(4.0)
 	_add_flash(0.58, 0.025)
@@ -1556,7 +1552,6 @@ func _hurt() -> void:
 		state = GameState.GAME_OVER
 		_end_run_feedback()
 		_finish_run()
-		audio_manager.set_music_overdriven(false)
 		audio_manager.set_music_ducked(false)
 		audio_manager.play_music("game_over")
 
@@ -1598,7 +1593,6 @@ func _check_stage_end() -> void:
 		state = GameState.VICTORY
 		_end_run_feedback()
 		_finish_run()
-		audio_manager.set_music_overdriven(false)
 		_add_shake(7.0)
 		_add_flash(0.72, 0.04)
 		audio_manager.set_music_ducked(false)

@@ -17,7 +17,6 @@ func _run() -> void:
 	manager._enabled = true
 	manager._setup_music()
 	_assert(manager.music_streams.size() == 6, "all six main tracks load")
-	_assert(manager.overdrive_music_streams.size() == 3, "all three Overdrive layers load")
 	var manifest = JSON.parse_string(FileAccess.get_file_as_string("res://public/assets/audio/music/manifest.json"))
 	_assert(manifest is Dictionary and manifest.status == "done", "delivery manifest is complete")
 	if not manifest is Dictionary:
@@ -25,6 +24,9 @@ func _run() -> void:
 		return
 	_assert(manifest.tracks.size() == 9, "manifest contains every replacement")
 	for track in manifest.tracks:
+		if not manager.MUSIC_PATHS.has(track.id):
+			# The Overdrive layers stay in the delivery record but are not played.
+			continue
 		var variant: Dictionary = track.variants[0]
 		var path: String = "res://public/assets/audio/music/" + str(variant.file)
 		var stream: AudioStreamWAV = load(path)
@@ -45,24 +47,17 @@ func _run() -> void:
 		player.stop()
 		player.stream = null
 		player.queue_free()
-	for key in manager.OVERDRIVE_LAYER_SETTINGS:
-		manager.set_music_overdriven(false)
-		manager.play_music(key, 0.01)
-		manager._music_players[manager._active_music_player].seek(7.0)
-		await create_timer(0.1).timeout
-		var expected: float = manager.get_music_position()
-		manager.set_music_overdriven(true)
-		await create_timer(0.1).timeout
-		_assert(manager._overdrive_music_player.playing, "Overdrive layer starts: " + key)
-		_assert(absf(manager._overdrive_music_player.get_playback_position() - expected) < 0.5, "Overdrive follows main position: " + key)
+	manager.play_music("stage_drive", 0.01)
+	await create_timer(0.1).timeout
+	var main_player: AudioStreamPlayer = manager._music_players[manager._active_music_player]
 	manager.toggle_mute()
-	_assert(not manager._overdrive_music_player.playing, "mute stops Overdrive")
+	_assert(not main_player.playing, "mute stops the BGM")
 	manager.toggle_mute()
-	_assert(manager._overdrive_music_player.playing, "unmute restores Overdrive")
+	_assert(manager._music_players[manager._active_music_player].playing, "unmute restores the BGM")
 	manager.set_app_active(false)
-	_assert(not manager._overdrive_music_player.playing, "background stops Overdrive")
+	_assert(not manager._music_players.any(func(player: AudioStreamPlayer) -> bool: return player.playing), "background stops the BGM")
 	manager.set_app_active(true)
-	_assert(manager._overdrive_music_player.playing, "foreground restores Overdrive")
+	_assert(manager._music_players[manager._active_music_player].playing, "foreground restores the BGM")
 	manager.shutdown()
 	root.remove_child(manager)
 	manager.free()
