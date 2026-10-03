@@ -16,6 +16,41 @@ func _initialize() -> void:
 	_assert(scene.selected_control_mode == scene.ControlMode.MANUAL, "manual mode is selected by default")
 	_assert(scene.control_mode == scene.ControlMode.MANUAL, "manual mode is active by default")
 
+	# Keyboard focus and touch settings must activate once without starting a flight.
+	var focus_next := InputEventAction.new()
+	focus_next.action = "ui_focus_next"
+	focus_next.pressed = true
+	_assert(scene._handle_title_focus_input(focus_next), "Tab focuses a title control")
+	_assert(scene.title_focus == 0, "first title focus is Manual")
+	scene._handle_title_focus_input(focus_next)
+	var accept := InputEventAction.new()
+	accept.action = "ui_accept"
+	accept.pressed = true
+	_assert(scene._handle_title_focus_input(accept), "Enter activates focused title control")
+	_assert(scene.selected_control_mode == scene.ControlMode.AI and scene.state == scene.GameState.TITLE, "focused AI selection does not deploy")
+	scene.selected_control_mode = scene.ControlMode.MANUAL
+	scene.title_focus = -1
+	var settings_touch := InputEventScreenTouch.new()
+	settings_touch.index = 8
+	settings_touch.pressed = true
+	settings_touch.position = Rect2(scene._settings_hitboxes().sound).get_center()
+	_assert(scene._handle_settings_input(settings_touch), "touch sound control responds")
+	_assert(scene.audio_manager.muted, "touch sound control mutes audio")
+	var settings_mouse := InputEventMouseButton.new()
+	settings_mouse.device = InputEvent.DEVICE_ID_EMULATION
+	settings_mouse.pressed = true
+	settings_mouse.button_index = MOUSE_BUTTON_LEFT
+	settings_mouse.position = settings_touch.position
+	_assert(not scene._handle_settings_input(settings_mouse), "emulated mouse does not repeat a sound tap")
+	_assert(scene.audio_manager.muted, "sound stays muted after the emulated click")
+	scene._handle_settings_input(settings_touch)
+	_assert(not scene.audio_manager.muted, "second real sound tap unmutes audio")
+	settings_touch.position = Rect2(scene._settings_hitboxes().motion).get_center()
+	scene._handle_settings_input(settings_touch)
+	_assert(scene.reduced_motion, "touch motion control enables reduced motion")
+	scene._handle_settings_input(settings_touch)
+	_assert(not scene.reduced_motion, "touch motion control restores full motion")
+
 	scene._toggle_selected_control_mode()
 	_assert(scene.selected_control_mode == scene.ControlMode.AI, "title selection toggles to ai")
 	scene._toggle_selected_control_mode()

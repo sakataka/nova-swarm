@@ -6,8 +6,9 @@ const Config := preload("res://scripts/game_config.gd")
 
 func draw_hud(canvas: CanvasItem, font: Font, display_font: Font, score: int, stage: int, wave: int, wave_count: int, lives: int, bombs: int, shield: int, combo: int, boss: Dictionary, resonance: float, overdrive_timer: float, overdrive_duration: float, chip_levels: Dictionary, chip_progress: Dictionary, muted: bool, chassis: Texture2D, icons: Texture2D, pulse := 0.0) -> void:
 	canvas.draw_rect(Rect2(0, 0, Config.W, Config.HUD + 12.0), Color("#020711"))
-	if chassis:
-		canvas.draw_texture_rect(chassis, Rect2(4, 2, Config.W - 8, 74), false, Color(1, 1, 1, 0.98))
+	canvas.draw_line(Vector2(20, 75), Vector2(Config.W - 20, 75), Color(Config.UI_CYAN, 0.34), 1)
+	for x in [298.0, 708.0]:
+		canvas.draw_line(Vector2(x, 12), Vector2(x, 64), Color(Config.UI_CYAN, 0.18), 1)
 	_draw_score(canvas, font, display_font, score)
 	_draw_stage_progress(canvas, font, display_font, stage, wave, wave_count, pulse)
 	_draw_resources(canvas, display_font, lives, bombs, shield, icons)

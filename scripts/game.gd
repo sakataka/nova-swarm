@@ -88,6 +88,10 @@ var best_score := 0
 var new_best := false
 # Keyboard/pointer focus for the pause and result menus.
 var menu_focus := 0
+var title_focus := -1
+var _ui_pointer := Vector2.INF
+var _ui_hover: Dictionary = {}
+var _ui_time := 0.0
 var _sync_popup_cooldown := 0.0
 var audio_manager
 
@@ -411,6 +415,7 @@ func _setup_native_window() -> void:
 
 func _process(delta: float) -> void:
 	var dt: float = min(delta, 0.033)
+	_update_ui_feedback(dt)
 	beat_clock.update(dt, audio_manager.current_music_key, audio_manager.get_music_position())
 	if beat_clock.ticked:
 		_pending_beat_tick = true
@@ -463,7 +468,15 @@ func _update_feedback(dt: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	_replay_web_title_music_after_input(event)
-	if _handle_title_pointer_input(event):
+	if event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
+		_ui_pointer = (event as InputEventMouseMotion).position
+	elif event is InputEventScreenTouch:
+		_ui_pointer = Vector2.INF
+	if _handle_settings_input(event):
+		get_viewport().set_input_as_handled()
+	elif _handle_title_focus_input(event):
+		get_viewport().set_input_as_handled()
+	elif _handle_title_pointer_input(event):
 		get_viewport().set_input_as_handled()
 	elif _handle_menu_input(event):
 		get_viewport().set_input_as_handled()
@@ -515,7 +528,74 @@ func _handle_title_pointer_input(event: InputEvent) -> bool:
 	var position: Variant = _pointer_press_position(event)
 	if position == null:
 		return false
+	title_focus = -1
 	return _select_title_mode_at(position)
+
+
+func _handle_title_focus_input(event: InputEvent) -> bool:
+	if state != GameState.TITLE:
+		return false
+	var keys := ["manual", "ai", "deploy", "sound", "motion"]
+	if event.is_action_pressed("ui_focus_next") or event.is_action_pressed("ui_focus_prev"):
+		var backwards := event.is_action_pressed("ui_focus_prev")
+		title_focus = (keys.size() - 1 if backwards else 0) if title_focus < 0 else posmod(title_focus + (-1 if backwards else 1), keys.size())
+		return true
+	if title_focus < 0 or not event.is_action_pressed("ui_accept"):
+		return false
+	var key: String = keys[title_focus]
+	if key in ["sound", "motion"]:
+		_activate_setting(key)
+	else:
+		var rect: Rect2 = _title_start_hitbox() if key == "deploy" else _title_mode_hitboxes()[key]
+		_select_title_mode_at(rect.get_center())
+	return true
+
+
+func _settings_hitboxes() -> Dictionary:
+	if portrait_pad:
+		var y := get_viewport_rect().size.y - 180.0
+		return {"sound": Rect2(70, y, 390, 112), "motion": Rect2(500, y, 390, 112)}
+	return {"sound": Rect2(644, 28, 124, 44), "motion": Rect2(780, 28, 124, 44)}
+
+
+func _activate_setting(key: String) -> void:
+	if key == "sound":
+		audio_manager.toggle_mute()
+	elif key == "motion":
+		reduced_motion = not reduced_motion
+
+
+func _handle_settings_input(event: InputEvent) -> bool:
+	if state not in [GameState.TITLE, GameState.PAUSED]:
+		return false
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R:
+		_activate_setting("motion")
+		return true
+	var position: Variant = _pointer_press_position(event)
+	if position == null:
+		return false
+	for key in _settings_hitboxes():
+		if Rect2(_settings_hitboxes()[key]).has_point(position):
+			_activate_setting(key)
+			return true
+	return false
+
+
+func _update_ui_feedback(dt: float) -> void:
+	_ui_time += dt
+	var rects: Dictionary = {}
+	if state == GameState.TITLE:
+		rects = _title_mode_hitboxes()
+		rects["deploy"] = _title_start_hitbox()
+	elif state != GameState.PLAYING:
+		var menus := _menu_rects()
+		for i in range(menus.size()):
+			rects["menu" + str(i)] = menus[i]
+	if state in [GameState.TITLE, GameState.PAUSED]:
+		rects.merge(_settings_hitboxes())
+	for key in rects:
+		var target := 1.0 if Rect2(rects[key]).has_point(_ui_pointer) else 0.0
+		_ui_hover[key] = target if reduced_motion else lerpf(float(_ui_hover.get(key, 0.0)), target, 1.0 - exp(-dt * 18.0))
 
 
 func _pointer_press_position(event: InputEvent) -> Variant:
@@ -628,14 +708,16 @@ func _menu_rects() -> Array[Rect2]:
 		var button := Vector2(720.0, 150.0)
 		var gap := 40.0
 		var top := Config.H + (pad_height - (button.y * count + gap * (count - 1))) * 0.5
+		if state in [GameState.GAME_OVER, GameState.VICTORY]:
+			top = _portrait_results_bottom() + 54
 		for i in range(count):
 			rects.append(Rect2(Vector2((Config.W - button.x) * 0.5, top + float(i) * (button.y + gap)), button))
 		return rects
 	var size := Vector2(210.0, 60.0)
 	var spacing := 22.0
-	var y := Config.HUD + 212.0
+	var y := 516.0
 	if state == GameState.GAME_OVER:
-		y = _results_table_bottom(240.0) + 40.0
+		y = _results_table_bottom(296.0) + 32.0
 	elif state == GameState.VICTORY:
 		y = _results_table_bottom(296.0) + 32.0
 	var left := (Config.W - (size.x * count + spacing * (count - 1))) * 0.5
@@ -663,10 +745,10 @@ func _handle_menu_input(event: InputEvent) -> bool:
 				_activate_menu_item(str(items[i].id))
 				return true
 		return false
-	if event.is_action_pressed("move_left") or event.is_action_pressed("move_up"):
+	if event.is_action_pressed("move_left") or event.is_action_pressed("move_up") or event.is_action_pressed("ui_focus_prev"):
 		menu_focus = posmod(menu_focus - 1, items.size())
 		return true
-	if event.is_action_pressed("move_right") or event.is_action_pressed("move_down"):
+	if event.is_action_pressed("move_right") or event.is_action_pressed("move_down") or event.is_action_pressed("ui_focus_next"):
 		menu_focus = posmod(menu_focus + 1, items.size())
 		return true
 	if event.is_action_pressed("ui_accept"):
@@ -688,6 +770,7 @@ func _activate_menu_item(id: String) -> void:
 func _return_to_title() -> void:
 	state = GameState.TITLE
 	menu_focus = 0
+	title_focus = -1
 	highlight_timer = 0.0
 	highlight_strength = 0.0
 	stage_banner = 0.0
@@ -1618,6 +1701,8 @@ func draw_ui_pass(canvas: CanvasItem) -> void:
 		_draw_portrait_pad_panel()
 		if state != GameState.PLAYING:
 			_draw_portrait_pad_contents()
+		else:
+			_draw_portrait_flight_status()
 	if _should_draw_touch_controls():
 		_draw_touch_controls()
 	if _should_draw_touch_pause():
@@ -2241,10 +2326,24 @@ func _draw_infection_overlay() -> void:
 
 
 func _draw_terminal_panel(rect: Rect2, accent: Color, fill_alpha := Config.UI_PANEL_ALPHA, selected := false) -> void:
-	if title_controls_texture:
-		_c.draw_texture_rect(title_controls_texture, rect, false, Color(1, 1, 1, fill_alpha))
+	_draw_ui_surface(rect, Color(Config.UI_PANEL, fill_alpha), Color(accent, 0.62 if selected else 0.24))
 	if selected:
-		_c.draw_line(rect.position + Vector2(16, rect.size.y - 7), rect.end - Vector2(16, 7), accent, 3.0)
+		_c.draw_rect(Rect2(rect.position + Vector2(0, 8), Vector2(3, rect.size.y - 16)), accent)
+
+
+# Code-native chrome remains sharp at both game resolution and Retina/mobile scale.
+func _draw_ui_surface(rect: Rect2, fill: Color, stroke: Color, width := 1.0) -> void:
+	var cut := minf(8.0, rect.size.y * 0.08)
+	var p := rect.position
+	var e := rect.end
+	var points := PackedVector2Array([p + Vector2(cut, 0), Vector2(e.x - cut, p.y), Vector2(e.x, p.y + cut), e - Vector2(0, cut), e - Vector2(cut, 0), Vector2(p.x + cut, e.y), Vector2(p.x, e.y - cut), p + Vector2(0, cut)])
+	_c.draw_colored_polygon(points, fill)
+	points.append(points[0])
+	_c.draw_polyline(points, stroke, width, true)
+
+
+func _draw_vertical_shade(rect: Rect2, color: Color, top_alpha: float, bottom_alpha: float) -> void:
+	_c.draw_polygon(PackedVector2Array([rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)]), PackedColorArray([Color(color, top_alpha), Color(color, top_alpha), Color(color, bottom_alpha), Color(color, bottom_alpha)]))
 
 
 func _draw_chrome_icon(key: String, rect: Rect2, tint := Color.WHITE) -> void:
@@ -2261,41 +2360,62 @@ func _draw_overlay() -> void:
 		_draw_title_screen()
 		return
 	_draw_infection_overlay()
+	if not portrait_pad:
+		_draw_ui_surface(Rect2(86, 104, 788, 560), Color(Config.UI_PANEL_DARK, 0.94), Color(Config.UI_CYAN, 0.3))
 	match state:
 		GameState.PAUSED:
-			_draw_arcade_title("PAUSED", Config.HUD + 130.0, 52, Config.UI_TEXT)
-			var status := "STAGE " + str(stage + 1) + "  " + str(Config.STAGES[stage].name) + "     SCORE " + str(score).pad_zeros(7)
-			hud.draw_centered(_c, font, status, Config.HUD + 176.0, 16, Color(Config.UI_TEXT, 0.78))
-			_draw_controls_panel(Config.HUD + 306.0)
+			if portrait_pad:
+				_draw_arcade_title("PAUSED", 270, 90, Config.UI_TEXT)
+				hud.draw_centered(_c, font, "STAGE " + str(stage + 1) + " / 6", 340, 34, Config.UI_TEXT_DIM)
+				hud.draw_centered(_c, display_font, _format_score(score), 435, 72, Config.UI_AMBER)
+			else:
+				_c.draw_string(display_font, Vector2(124, 220), "PAUSED", HORIZONTAL_ALIGNMENT_LEFT, -1, 56, Config.UI_TEXT)
+				_c.draw_line(Vector2(124, 248), Vector2(488, 248), Color(Config.UI_CYAN, 0.4), 1)
+				_c.draw_string(font, Vector2(124, 292), "STAGE " + str(stage + 1) + " / 6", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Config.UI_TEXT_DIM)
+				_c.draw_string(display_font, Vector2(124, 332), _format_score(score), HORIZONTAL_ALIGNMENT_LEFT, -1, 32, Config.UI_AMBER)
+				_c.draw_string(font, Vector2(124, 362), "SCORE", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Config.UI_TEXT_DIM)
+				_c.draw_line(Vector2(526, 156), Vector2(526, 460), Color(Config.UI_CYAN, 0.24), 1)
+				_draw_controls_panel(170)
+				_c.draw_string(font, Vector2(124, 432), "Chain the fleet. Trigger DRIVE on the beat.", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_TEXT)
 		GameState.GAME_OVER:
-			_draw_arcade_title("GAME OVER", 132.0, 54, Config.UI_TEXT)
-			_draw_score_summary(182.0)
-			hud.draw_centered(_c, font, "REACHED STAGE " + str(stage + 1) + "  " + str(Config.STAGES[stage].name), 212.0, 14, Color(Config.UI_TEXT, 0.7))
-			_draw_results_table(240.0)
+			_draw_arcade_title("GAME OVER", 188 if not portrait_pad else 250, 48 if not portrait_pad else 80, Config.UI_TEXT)
+			_draw_score_summary(238 if not portrait_pad else 378)
+			hud.draw_centered(_c, font, "REACHED STAGE " + str(stage + 1) + " / 6", 268 if not portrait_pad else 524, 14 if not portrait_pad else 34, Config.UI_TEXT_DIM)
+			if not portrait_pad:
+				_draw_results_table(296)
 		GameState.VICTORY:
 			if ending_texture:
-				var art := Rect2(210.0, 18.0, 540.0, 160.0)
-				_draw_terminal_panel(art.grow(10.0), Config.UI_CYAN, 0.58)
-				_c.draw_texture_rect(ending_texture, art, false)
-			_draw_arcade_title("MISSION CLEAR", 232.0, 42, Config.UI_TEXT)
-			_draw_score_summary(272.0)
-			_draw_results_table(296.0)
+				_c.draw_texture_rect(ending_texture, Rect2(0, 0, Config.W, Config.H), false)
+				_c.draw_rect(Rect2(0, 0, Config.W, Config.H), Color(Config.UI_PANEL_DARK, 0.76))
+				if not portrait_pad:
+					_draw_ui_surface(Rect2(86, 104, 788, 560), Color(Config.UI_PANEL_DARK, 0.86), Color(Config.UI_CYAN, 0.3))
+			_draw_arcade_title("MISSION CLEAR", 188 if not portrait_pad else 250, 46 if not portrait_pad else 74, Config.UI_TEXT)
+			_draw_score_summary(248 if not portrait_pad else 378)
+			if not portrait_pad:
+				_draw_results_table(296)
 	if not portrait_pad:
 		_draw_menu()
+		if state == GameState.PAUSED:
+			_draw_settings_controls()
 
 
 # Final score, the saved manual best, and a NEW BEST mark when this run beat it.
 func _draw_score_summary(y: float) -> void:
-	var score_text := "SCORE  " + str(score).pad_zeros(7)
+	if portrait_pad:
+		hud.draw_centered(_c, display_font, _format_score(score), y, 86, Config.UI_AMBER)
+		var subtitle := "AI DEMO" if control_mode == ControlMode.AI else "NEW BEST" if new_best else "BEST  " + _format_score(best_score)
+		hud.draw_centered(_c, font, subtitle, y + 76, 32, Config.UI_AMBER if new_best else Config.UI_TEXT_DIM)
+		return
+	var score_text := _format_score(score)
 	if control_mode == ControlMode.AI:
-		hud.draw_centered(_c, display_font, score_text + "   /   AI DEMO", y, 24, Config.UI_AMBER)
+		hud.draw_centered(_c, display_font, score_text + "   /   AI DEMO", y, 36, Config.UI_AMBER)
 		return
 	var best_text := "NEW BEST" if new_best else "BEST  " + str(best_score).pad_zeros(7)
-	var score_size := display_font.get_string_size(score_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24)
+	var score_size := display_font.get_string_size(score_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 44)
 	var best_size := font.get_string_size(best_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
 	var gap := 28.0
 	var x := (Config.W - score_size.x - gap - best_size.x) * 0.5
-	_c.draw_string(display_font, Vector2(x, y), score_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Config.UI_AMBER)
+	_c.draw_string(display_font, Vector2(x, y), score_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 44, Config.UI_AMBER)
 	var best_pos := Vector2(x + score_size.x + gap, y - 3.0)
 	if new_best:
 		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
@@ -2307,11 +2427,21 @@ func _draw_score_summary(y: float) -> void:
 		_c.draw_string(font, best_pos, best_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(Config.UI_TEXT, 0.62))
 
 
+func _format_score(value: int) -> String:
+	var digits := str(value)
+	var formatted := ""
+	for i in range(digits.length()):
+		if i > 0 and (digits.length() - i) % 3 == 0:
+			formatted += ","
+		formatted += digits[i]
+	return formatted
+
+
 func _draw_menu() -> void:
 	var items := _menu_items()
 	var rects := _menu_rects()
 	for i in range(items.size()):
-		_draw_menu_button(rects[i], str(items[i].label), i == menu_focus, i == 0)
+		_draw_menu_button(rects[i], str(items[i].label), i == menu_focus, i == 0, float(_ui_hover.get("menu" + str(i), 0.0)))
 	if portrait_pad or _touch_controls_enabled():
 		return
 	var hint := "ARROWS SELECT     ENTER CONFIRM"
@@ -2320,12 +2450,13 @@ func _draw_menu() -> void:
 	hud.draw_centered(_c, font, hint, rects[0].end.y + 30.0 if not rects.is_empty() else Config.H - 16.0, 11, Color(Config.UI_TEXT, 0.5))
 
 
-func _draw_menu_button(rect: Rect2, label: String, focused: bool, primary: bool) -> void:
-	_draw_terminal_panel(rect, Config.UI_AMBER if primary else Config.UI_CYAN, 1.0 if focused else 0.6, focused)
+func _draw_menu_button(rect: Rect2, label: String, focused: bool, primary: bool, hover := 0.0) -> void:
+	var fill := Config.UI_CYAN.lerp(Color("#baf7ff"), hover * 0.5) if primary else Color(Config.UI_CYAN, 0.14 if focused else 0.04 + hover * 0.06)
+	_draw_ui_surface(rect, fill, Color(Config.UI_CYAN, 0.95 if focused else 0.4), 2 if portrait_pad else 1)
 	if focused:
-		_c.draw_rect(rect.grow(-10.0), Color(Config.UI_CYAN, 0.08))
+		_draw_ui_surface(rect.grow(5), Color(0, 0, 0, 0), Color(Config.UI_TEXT, 0.82), 2)
 	var size := int(clampf(rect.size.y * 0.36, 16.0, 52.0))
-	var color := Color.WHITE if focused else Color(Config.UI_TEXT, 0.66)
+	var color := Config.UI_PANEL_DARK if primary else Config.UI_TEXT
 	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.5 + float(size) * 0.36, size, color)
 
 
@@ -2354,40 +2485,98 @@ func _controls_rows() -> Array:
 
 
 func _draw_controls_panel(y: float) -> void:
-	var rect := Rect2(250.0, y, 460.0, 196.0)
-	_draw_terminal_panel(rect, Config.UI_CYAN, 0.78)
+	var rect := Rect2(554, y, 300, 260)
+	_c.draw_string(display_font, Vector2(rect.position.x, y + 20), "CONTROLS", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_TEXT)
 	var rows := _controls_rows()
 	for i in range(rows.size()):
-		var row_y := y + 42.0 + float(i) * 26.0
-		_c.draw_string(font, Vector2(rect.position.x + 34.0, row_y), rows[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_AMBER if rows[i][0] == "DRIVE" else Config.UI_CYAN)
-		_c.draw_string(font, Vector2(rect.position.x + 130.0, row_y), rows[i][1], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(Config.UI_TEXT, 0.84))
+		var row_y := y + 60 + float(i) * 36
+		_c.draw_string(font, Vector2(rect.position.x, row_y), rows[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Config.UI_AMBER if rows[i][0] == "DRIVE" else Color("#baf7ff"))
+		hud.draw_fitted_text(_c, font, rows[i][1], Rect2(rect.position.x + 76, row_y - 14, 220, 18), 13, 10, Config.UI_TEXT)
 
 
 func _draw_title_screen() -> void:
 	if title_background_texture:
-		_c.draw_texture_rect(title_background_texture, Rect2(0, 0, Config.W, Config.H), false, Color.WHITE)
+		var drift := Vector2.ZERO if reduced_motion else Vector2(sin(_ui_time * 0.16) * 5.0, cos(_ui_time * 0.12) * 3.0)
+		_c.draw_texture_rect(title_background_texture, Rect2(Vector2(-8, -8) + drift, Vector2(Config.W + 16, Config.H + 16)), false)
+	_draw_vertical_shade(Rect2(0, 0, Config.W, 330), Config.UI_PANEL_DARK, 0.35, 0.0)
+	if not portrait_pad:
+		_c.draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(500, 0), Vector2(500, 520), Vector2(0, 520)]), PackedColorArray([Color(Config.UI_PANEL_DARK, 0.68), Color(Config.UI_PANEL_DARK, 0), Color(Config.UI_PANEL_DARK, 0), Color(Config.UI_PANEL_DARK, 0.68)]))
 	_draw_title_wordmark()
-	if best_score > 0:
-		hud.draw_centered(_c, font, "BEST  " + str(best_score).pad_zeros(7), 262.0, 16, Color(Config.UI_TEXT, 0.86))
 	if portrait_pad:
 		return
-	_c.draw_rect(Rect2(0, Config.H - 124.0, Config.W, 124.0), Color(0.01, 0.035, 0.075, 0.66))
+	_c.draw_rect(Rect2(54, 275, 2, 80), Config.UI_CYAN)
+	_c.draw_string(display_font, Vector2(70, 296), "Break the fleet.", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color("#baf7ff"))
+	_c.draw_string(display_font, Vector2(70, 328), "Ride the beat.", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color("#baf7ff"))
+	_c.draw_string(font, Vector2(70, 354), "Chain reactions. Beat-synced combat.", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Config.UI_TEXT)
+	_draw_title_metadata(734.0, 118.0, 18)
+	if best_score > 0:
+		draw_text_right("BEST  " + str(best_score).pad_zeros(7), Rect2(664, 176, 240, 24), 16, Config.UI_AMBER)
+	_draw_vertical_shade(Rect2(0, 528, Config.W, 70), Config.UI_PANEL_DARK, 0.0, 0.96)
+	_c.draw_rect(Rect2(0, 598, Config.W, 122), Color(Config.UI_PANEL_DARK, 0.96))
+	_c.draw_line(Vector2(54, 598), Vector2(906, 598), Color(Config.UI_CYAN, 0.25), 1.0)
 	_draw_title_mode_select()
 	_draw_title_start_button()
-	var hint := "TAP AI DEMO AGAIN TO CHANGE ITS STYLE" if touch_controls_available else "LEFT / RIGHT  MODE      UP / DOWN  AI STYLE      ENTER  DEPLOY"
-	hud.draw_centered(_c, font, hint, Config.H - 10.0, 11, Color(Config.UI_TEXT, 0.56))
+	var hint := "AI DEMO: TAP AGAIN TO CHANGE STYLE" if touch_controls_available else "WASD MOVE    SPACE SHOT    B BOMB    E DRIVE    P PAUSE    TAB SELECT"
+	if selected_control_mode == ControlMode.AI and not touch_controls_available:
+		hint = "UP / DOWN  AI STYLE    V  HOLOGRAM IN FLIGHT    ENTER  DEPLOY    TAB  SELECT"
+	hud.draw_centered(_c, font, hint, 707, 12, Color(Config.UI_TEXT, 0.72))
+	_draw_settings_controls()
 
 
 func _draw_portrait_title_controls() -> void:
+	var top := _portrait_title_top()
+	var compact := top < 1070.0
+	var copy_y := Config.H + 85.0
+	_c.draw_rect(Rect2(70, copy_y - 46, 3, 116 if not compact else 66), Config.UI_CYAN)
+	_c.draw_string(display_font, Vector2(96, copy_y), "Break the fleet.", HORIZONTAL_ALIGNMENT_LEFT, -1, 50 if not compact else 40, Color("#baf7ff"))
+	if not compact:
+		_c.draw_string(display_font, Vector2(96, copy_y + 58), "Ride the beat.", HORIZONTAL_ALIGNMENT_LEFT, -1, 50, Color("#baf7ff"))
+	var description_y := copy_y + (112.0 if not compact else 58.0)
+	_c.draw_string(font, Vector2(96, description_y), "Chain reactions. Beat-synced combat.", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Config.UI_TEXT)
+	_c.draw_line(Vector2(70, top - 94), Vector2(890, top - 94), Color(Config.UI_CYAN, 0.28), 2)
+	_draw_centered_in_width("06 STAGES    /    ~ 5 MIN", 70, 820, top - 44, 32, Config.UI_TEXT)
 	_draw_title_mode_select()
 	_draw_title_start_button()
 	var start := _title_start_hitbox()
-	hud.draw_centered(_c, font, "TAP AI DEMO AGAIN TO CHANGE ITS STYLE", start.end.y + 80.0, 26, Color(Config.UI_TEXT, 0.56))
+	var is_ai := selected_control_mode == ControlMode.AI
+	var caption := "AI PILOT  /  " + str(ai_pilot.personality).to_upper() if is_ai else "YOU FLY  /  CHAIN THE FLEET. OWN THE BEAT."
+	hud.draw_centered(_c, font, caption, start.end.y + 76, 28, Color(Config.UI_TEXT, 0.82))
+	hud.draw_centered(_c, font, "TAP AI DEMO AGAIN TO CHANGE STYLE" if is_ai else "LEFT STICK: MOVE    HOLD SHOT: FIRE", start.end.y + 128, 26, Config.UI_TEXT_DIM)
+	if best_score > 0:
+		hud.draw_centered(_c, display_font, "BEST  " + str(best_score).pad_zeros(7), start.end.y + 196, 32, Config.UI_AMBER)
+	var brief_y := start.end.y + (248 if best_score > 0 else 198)
+	if brief_y + 146 < Rect2(_settings_hitboxes().sound).position.y - 30:
+		_draw_ui_surface(Rect2(70, brief_y, 820, 146), Color(Config.UI_PANEL, 0.36), Color(Config.UI_CYAN, 0.14), 2)
+		for i in range(2):
+			var y := brief_y + 53 + 62 * i
+			_c.draw_string(display_font, Vector2(104, y), "CHAIN" if i == 0 else "SYNC", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color("#baf7ff"))
+			_c.draw_string(font, Vector2(266, y), "Linked kills spread damage." if i == 0 else "On-beat DRIVE lasts longer.", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Config.UI_TEXT_DIM)
+	_draw_settings_controls()
 
 
 func _draw_title_wordmark() -> void:
-	_draw_title_line("NOVA", Rect2(190.0, 48.0, 580.0, 82.0), 78, 56, Color("#baf7ff"))
-	_draw_title_line("SWARM", Rect2(120.0, 126.0, 720.0, 104.0), 96, 68, Color("#f7fbff"))
+	if portrait_pad:
+		_draw_title_line("NOVA", Rect2(190, 40, 580, 120), 120, 56, Color("#baf7ff"))
+		_draw_title_line("SWARM", Rect2(120, 152, 720, 136), 136, 68, Config.UI_TEXT)
+		return
+	_c.draw_string(display_font, Vector2(66, 153), "NOVA", HORIZONTAL_ALIGNMENT_LEFT, -1, 88, Color("#baf7ff"))
+	_c.draw_string(display_font, Vector2(66, 239), "SWARM", HORIZONTAL_ALIGNMENT_LEFT, -1, 88, Config.UI_TEXT)
+
+
+func _draw_title_metadata(x: float, y: float, size: int) -> void:
+	_c.draw_string(display_font, Vector2(x, y), "06 STAGES", HORIZONTAL_ALIGNMENT_LEFT, -1, size, Config.UI_TEXT)
+	_c.draw_string(font, Vector2(x, y + 28), "~ 5 MIN", HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color("#baf7ff"))
+
+
+func _draw_settings_controls() -> void:
+	var rects := _settings_hitboxes()
+	for key in ["sound", "motion"]:
+		var rect: Rect2 = rects[key]
+		var focused := state == GameState.TITLE and title_focus == (3 if key == "sound" else 4)
+		var hover := float(_ui_hover.get(key, 0.0))
+		_draw_ui_surface(rect, Color(Config.UI_PANEL_DARK, 0.92), Color(Config.UI_CYAN, 0.75 if focused else 0.18 + 0.4 * hover), 2 if portrait_pad else 1)
+		var label := ("SOUND OFF" if audio_manager.muted else "SOUND ON") if key == "sound" else ("MOTION LOW" if reduced_motion else "MOTION FULL")
+		_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.58, 32 if portrait_pad else 11, Config.UI_TEXT if hover > 0.1 or focused else Config.UI_TEXT_DIM)
 
 
 func _draw_title_line(text: String, rect: Rect2, preferred_size: int, minimum_size: int, color: Color) -> void:
@@ -2532,7 +2721,62 @@ func _draw_portrait_pad_contents() -> void:
 	if state == GameState.TITLE:
 		_draw_portrait_title_controls()
 	else:
+		if state == GameState.PAUSED:
+			var rows := _controls_rows()
+			for i in range(rows.size()):
+				var y := Config.H + 90 + float(i) * 46
+				_c.draw_string(font, Vector2(100, y), rows[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color("#baf7ff"))
+				hud.draw_fitted_text(_c, font, rows[i][1], Rect2(290, y - 32, 580, 40), 30, 26, Config.UI_TEXT)
+		else:
+			_draw_portrait_results()
 		_draw_menu()
+		if state == GameState.PAUSED:
+			_draw_settings_controls()
+
+
+func _draw_portrait_results() -> void:
+	_c.draw_string(font, Vector2(70, Config.H + 88), "FLIGHT RECORD", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Config.UI_TEXT_DIM)
+	for i in range(stage_results.size()):
+		var result: Dictionary = stage_results[i]
+		var y := Config.H + 164 + i * 68
+		_c.draw_line(Vector2(70, y + 20), Vector2(890, y + 20), Color(Config.UI_CYAN, 0.15), 2)
+		hud.draw_fitted_text(_c, font, str(i + 1).pad_zeros(2) + "  " + str(result.name), Rect2(70, y - 34, 440, 40), 32, 28, Config.UI_TEXT)
+		draw_text_right(_format_score(int(result.score)), Rect2(530, y - 34, 260, 40), 32, Color("#baf7ff"))
+		_draw_centered_in_width(str(result.rank), 802, 88, y, 36, _rank_color(str(result.rank)))
+	if not stage_results.is_empty():
+		var tip := str(stage_results[-1].get("tip", ""))
+		hud.draw_fitted_text(_c, font, tip, Rect2(70, _portrait_results_bottom() - 70, 820, 40), 28, 24, Config.UI_AMBER)
+
+
+func _portrait_results_bottom() -> float:
+	return Config.H + 244 + float(stage_results.size()) * 68
+
+
+func _draw_portrait_flight_status() -> void:
+	var y := Config.H + 88
+	_c.draw_string(font, Vector2(70, y), "STAGE " + str(stage + 1) + " / 6", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Config.UI_TEXT_DIM)
+	_c.draw_string(display_font, Vector2(70, y + 62), _format_score(score), HORIZONTAL_ALIGNMENT_LEFT, -1, 48, Config.UI_TEXT)
+	_c.draw_string(font, Vector2(70, y + 116), "LIFE " + str(player.lives) + "    SHIELD " + str(player.shield) + "    BOMB " + str(player.bombs), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color("#baf7ff"))
+	if control_mode == ControlMode.AI:
+		var panel := Rect2(70, _portrait_pad_center_y() - 180, 820, 360)
+		_draw_ui_surface(panel, Color(Config.UI_PANEL, 0.42), Color(Config.UI_CYAN, 0.28), 2)
+		var mode := str(ai_pilot.debug.get("mode", "STANDBY"))
+		var descriptions := {"ATTACK": "Holding a firing lane.", "EVADE": "Moving clear of incoming fire.", "CHAIN HUNT": "Looking for a resonance cascade.", "SYNC WAIT": "Waiting for the next beat.", "BOMB": "Clearing a high-threat lane.", "OVERDRIVE": "Converting danger into score.", "COLLECT": "Moving toward an upgrade chip."}
+		_c.draw_string(font, panel.position + Vector2(34, 54), "AI PILOT  /  " + str(ai_pilot.personality).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color("#baf7ff"))
+		_c.draw_string(display_font, panel.position + Vector2(34, 134), mode, HORIZONTAL_ALIGNMENT_LEFT, -1, 60, Config.UI_TEXT)
+		hud.draw_fitted_text(_c, font, str(descriptions.get(mode, "Searching for a safe firing lane.")), Rect2(panel.position + Vector2(34, 170), Vector2(752, 50)), 34, 30, Config.UI_TEXT_DIM)
+		var danger := clampf(float(ai_pilot.debug.get("danger", 0)) / 3, 0, 1)
+		_c.draw_string(font, panel.position + Vector2(34, 274), "THREAT", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Config.UI_TEXT_DIM)
+		var meter := Rect2(panel.position + Vector2(34, 306), Vector2(752, 10))
+		_c.draw_rect(meter, Color(Config.UI_CYAN, 0.12))
+		_c.draw_rect(Rect2(meter.position, Vector2(meter.size.x * danger, meter.size.y)), Config.UI_CYAN.lerp(Config.UI_RED, danger))
+		return
+	var ratio := clampf(player.overdrive_timer / player.get_overdrive_duration() if player.is_overdrive_active() else player.resonance / 100, 0, 1)
+	var gauge := Rect2(70, y + 166, 660, 8)
+	_c.draw_rect(gauge, Color(Config.UI_CYAN, 0.14))
+	_c.draw_rect(Rect2(gauge.position, Vector2(gauge.size.x * ratio, gauge.size.y)), Config.UI_AMBER if player.can_overdrive() or player.is_overdrive_active() else Config.UI_CYAN)
+	_c.draw_string(font, Vector2(70, y + 224), "DRIVE ON THE BEAT = PERFECT SYNC", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Config.UI_TEXT_DIM)
+	hud.draw_centered(_c, font, "LEFT STICK: MOVE    HOLD SHOT: FIRE", _portrait_pad_center_y() + 320, 30, Config.UI_TEXT_DIM)
 
 
 func _update_portrait_pad() -> void:
@@ -2616,46 +2860,58 @@ func _draw_title_mode_select() -> void:
 	var manual_rect := Rect2(hitboxes.manual)
 	var ai_rect := Rect2(hitboxes.ai)
 	var ai_selected := selected_control_mode == ControlMode.AI
-	_draw_title_control(manual_rect, not ai_selected, "MANUAL", "YOU FLY")
-	_draw_title_control(ai_rect, ai_selected, "AI DEMO", "< " + str(ai_pilot.personality).to_upper() + " >" if ai_selected else "WATCH THE AI")
+	_draw_title_control(manual_rect, not ai_selected, "MANUAL", "YOU FLY", "manual", title_focus == 0)
+	_draw_title_control(ai_rect, ai_selected, "AI DEMO", str(ai_pilot.personality).to_upper() if ai_selected else "WATCH THE AI", "ai", title_focus == 1)
 
 
 func _draw_title_start_button() -> void:
 	var rect := _title_start_hitbox()
-	_draw_terminal_panel(rect, Config.UI_CYAN, 1.0, true)
-	var size := int(rect.size.y * 0.32)
-	_draw_centered_in_width("DEPLOY", rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.5 + float(size) * 0.36, size, Color.WHITE)
+	var hover := float(_ui_hover.get("deploy", 0.0))
+	_draw_ui_surface(rect, Config.UI_CYAN.lerp(Color("#baf7ff"), hover * 0.55), Color("#baf7ff"))
+	if title_focus == 2:
+		_draw_ui_surface(rect.grow(5), Color(0, 0, 0, 0), Config.UI_TEXT, 2)
+	var size := int(rect.size.y * 0.34)
+	_draw_centered_in_width("DEPLOY", rect.position.x, rect.size.x - rect.size.y * 0.8, rect.position.y + rect.size.y * 0.5 + float(size) * 0.36, size, Config.UI_PANEL_DARK)
+	var arrow := Vector2(rect.end.x - rect.size.y * 0.55 + hover * 4, rect.get_center().y)
+	var arrow_size := rect.size.y * 0.13
+	_c.draw_line(arrow - Vector2(arrow_size * 1.8, 0), arrow, Config.UI_PANEL_DARK, 3 if not portrait_pad else 6, true)
+	_c.draw_polyline(PackedVector2Array([arrow + Vector2(-arrow_size, -arrow_size), arrow, arrow + Vector2(-arrow_size, arrow_size)]), Config.UI_PANEL_DARK, 3 if not portrait_pad else 6, true)
 
 
 func _title_start_hitbox() -> Rect2:
 	if portrait_pad:
-		return Rect2(70.0, _portrait_title_top() + 260.0, 820.0, 190.0)
-	return Rect2(500.0, 614.0, 392.0, 80.0)
+		return Rect2(70, _portrait_title_top() + 186, 820, 144)
+	return Rect2(506, 618, 398, 68)
 
 
-func _draw_title_control(rect: Rect2, selected: bool, label: String, caption: String) -> void:
-	var scale := rect.size.y / 60.0
-	_draw_terminal_panel(rect, Config.UI_CYAN, 1.0 if selected else 0.62, selected)
-	_draw_centered_in_width(caption, rect.position.x, rect.size.x, rect.position.y + 20.0 * scale, int(10.0 * scale), Config.UI_AMBER if selected else Color(Config.UI_TEXT, 0.5))
-	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + 41.0 * scale, int(16.0 * scale), Color.WHITE if selected else Color(Config.UI_TEXT, 0.62))
+func _draw_title_control(rect: Rect2, selected: bool, label: String, caption: String, key: String, focused: bool) -> void:
+	var scale := rect.size.y / 68.0
+	var hover := float(_ui_hover.get(key, 0.0))
+	_draw_ui_surface(rect, Color(Config.UI_CYAN, 0.1 if selected else 0.025 + 0.07 * hover), Color(Config.UI_CYAN, 0.95 if selected or focused else 0.26 + 0.4 * hover), 2 if portrait_pad else 1)
+	if selected:
+		_c.draw_rect(Rect2(rect.position + Vector2(0, 8 * scale), Vector2(4 * scale, rect.size.y - 16 * scale)), Config.UI_CYAN)
+	if focused:
+		_draw_ui_surface(rect.grow(5), Color(0, 0, 0, 0), Config.UI_TEXT, 2)
+	_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + 29 * scale, int(18 * scale), Config.UI_TEXT)
+	_draw_centered_in_width(caption, rect.position.x, rect.size.x, rect.position.y + 51 * scale, int(11 * scale), Color("#baf7ff") if selected else Config.UI_TEXT_DIM)
 
 
 func _title_mode_hitboxes(_y := 0.0) -> Dictionary:
 	if portrait_pad:
 		var top := _portrait_title_top()
 		return {
-			"manual": Rect2(70.0, top, 400.0, 180.0),
-			"ai": Rect2(490.0, top, 400.0, 180.0),
+			"manual": Rect2(70, top, 390, 150),
+			"ai": Rect2(500, top, 390, 150),
 		}
 	return {
-		"manual": Rect2(70.0, 626.0, 196.0, 60.0),
-		"ai": Rect2(264.0, 626.0, 196.0, 60.0),
+		"manual": Rect2(54, 618, 188, 68),
+		"ai": Rect2(258, 618, 188, 68),
 	}
 
 
 func _portrait_title_top() -> float:
 	var pad_height := get_viewport_rect().size.y - Config.H
-	return Config.H + maxf(60.0, (pad_height - 560.0) * 0.4)
+	return Config.H + clampf(pad_height * 0.27, 290, 370)
 
 
 func _draw_highlight_frame() -> void:

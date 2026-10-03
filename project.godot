@@ -10,10 +10,12 @@ config_version=5
 
 [application]
 
-config/name="Nova Swarm Godot"
+config/name="Nova Swarm"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://public/assets/refresh/player.png"
+boot_splash/image="res://public/assets/refresh/title.png"
+boot_splash/bg_color=Color(0.02, 0.04, 0.08, 1)
 
 [audio]
 

@@ -3,9 +3,9 @@
 	<head>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-		<meta name="theme-color" content="#000000" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>$GODOT_PROJECT_NAME</title>
+		<meta name="theme-color" content="#030611">
+		<meta name="description" content="Break the fleet. Ride the beat. A six-stage space shooter with chain reactions, beat-synced combat and an AI pilot you can watch think.">
+<title>Nova Swarm — Break the fleet. Ride the beat.</title>
 		<style>
 html, body, #canvas {
 	margin: 0;
@@ -18,6 +18,8 @@ body {
 	background-color: black;
 	overflow: hidden;
 	touch-action: none;
+	font-family: system-ui, sans-serif;
+	color-scheme: dark;
 }
 
 #canvas {
@@ -30,7 +32,7 @@ body {
 	outline: none;
 }
 
-#status, #status-splash, #status-progress {
+#status, #status-splash {
 	position: absolute;
 	left: 0;
 	right: 0;
@@ -42,7 +44,7 @@ body {
 }
 
 #status {
-	background-color: $GODOT_SPLASH_COLOR;
+	background-color: #030611;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
@@ -54,6 +56,10 @@ body {
 	max-height: 100%;
 	max-width: 100%;
 	margin: auto;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	opacity: .32;
 }
 
 #status-splash.show-image--false {
@@ -66,6 +72,17 @@ body {
 	object-fit: contain;
 }
 
+#loading-content {
+	position: relative;
+	width: min(520px, calc(100% - 64px));
+	z-index: 1;
+}
+#loading-content h1 { font-size: clamp(40px, 7vw, 72px); letter-spacing: -.06em; line-height: .95; margin: 0 0 24px; font-weight: 800; }
+#loading-content h1 span { display: block; color: #baf7ff; }
+#loading-content p { font-size: 16px; color: #c6d8ed; margin: 0 0 40px; }
+#loading-label { display: flex; justify-content: space-between; font: 12px ui-monospace, monospace; letter-spacing: .08em; color: #baf7ff; margin-bottom: 12px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
 #status-splash.use-filter--false {
 	image-rendering: pixelated;
 }
@@ -75,24 +92,31 @@ body {
 }
 
 #status-progress {
-	bottom: 10%;
-	width: 50%;
-	margin: 0 auto;
+	width: 100%;
+	height: 4px;
+	appearance: none;
+	border: none;
+	background: #23314b;
+	accent-color: #42d9ff;
 }
+#status-progress::-webkit-progress-bar { background: #23314b; }
+#status-progress::-webkit-progress-value { background: #42d9ff; }
+#status-progress::-moz-progress-bar { background: #42d9ff; }
 
 #status-notice {
-	background-color: #5b3943;
-	border-radius: 0.5rem;
-	border: 1px solid #9b3943;
+	background-color: #081323;
+	border: 1px solid #ffb84d;
 	color: #e0e0e0;
 	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
 	line-height: 1.3;
-	margin: 0 2rem;
+	margin: 24px 0 0;
 	overflow: hidden;
 	padding: 1rem;
 	text-align: center;
 	z-index: 1;
 }
+#status-retry { display: none; margin-top: 20px; padding: 12px 24px; min-height: 44px; border: 0; background: #42d9ff; color: #030611; font: 700 14px system-ui, sans-serif; cursor: pointer; }
+#status-retry:focus-visible { outline: 2px solid white; outline-offset: 4px; }
 		@media(max-width:640px){
  body{height:100dvh;box-sizing:border-box;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) max(20px,env(safe-area-inset-left));touch-action:manipulation;color-scheme:dark}
  #canvas{width:100%!important;height:100%!important;touch-action:none;-webkit-tap-highlight-color:transparent}
@@ -105,9 +129,10 @@ body {
 		$GODOT_HEAD_INCLUDE
 	</head>
 	<body>
-		<canvas id="canvas">
-			Your browser does not support the canvas tag.
+		<canvas id="canvas" tabindex="0" aria-label="Nova Swarm game" aria-describedby="game-instructions" aria-busy="true">
+			Nova Swarm needs a browser with Canvas and WebGL support.
 		</canvas>
+		<p id="game-instructions" class="sr-only">Press Enter to deploy. Left and right select Manual or AI Demo. Tab and Shift Tab select title controls. Move with WASD or arrow keys, hold Space to shoot, B for bomb, E for Drive, P or Escape to pause, M for sound. R switches motion in the title and pause menus. Touch controls appear on touch devices.</p>
 
 		<noscript>
 			Your browser does not support JavaScript.
@@ -115,8 +140,14 @@ body {
 
 		<div id="status">
 			<img id="status-splash" class="$GODOT_SPLASH_CLASSES" src="$GODOT_SPLASH" alt="">
-			<progress id="status-progress"></progress>
-			<div id="status-notice"></div>
+			<div id="loading-content">
+				<h1><span>NOVA</span>SWARM</h1>
+				<p>Break the fleet. Ride the beat.</p>
+				<div id="loading-label"><span id="loading-state" role="status" aria-live="polite">PREPARING FLIGHT</span><span id="loading-percent" aria-hidden="true">—</span></div>
+				<progress id="status-progress" aria-label="Loading Nova Swarm"></progress>
+				<div id="status-notice" role="alert"></div>
+				<button id="status-retry" type="button">RETRY FLIGHT</button>
+			</div>
 		</div>
 
 		<script src="$GODOT_URL"></script>
@@ -137,6 +168,10 @@ const canvas = document.getElementById('canvas');
 	const statusOverlay = document.getElementById('status');
 	const statusProgress = document.getElementById('status-progress');
 	const statusNotice = document.getElementById('status-notice');
+	const loadingPercent = document.getElementById('loading-percent');
+	const loadingState = document.getElementById('loading-state');
+	const retry = document.getElementById('status-retry');
+	retry.addEventListener('click', () => window.location.reload());
 
 	let initializing = true;
 	let statusMode = '';
@@ -147,6 +182,7 @@ const canvas = document.getElementById('canvas');
 		}
 		if (mode === 'hidden') {
 			statusOverlay.remove();
+			canvas.setAttribute('aria-busy', 'false');
 			initializing = false;
 			return;
 		}
@@ -177,6 +213,8 @@ const canvas = document.getElementById('canvas');
 			setStatusNotice('An unknown error occurred.');
 		}
 		setStatusMode('notice');
+		loadingState.textContent = 'FLIGHT UNAVAILABLE';
+		retry.style.display = 'inline-block';
 		initializing = false;
 	}
 
@@ -222,6 +260,8 @@ const canvas = document.getElementById('canvas');
 				if (current > 0 && total > 0) {
 					statusProgress.value = current;
 					statusProgress.max = total;
+					loadingPercent.textContent = `${Math.round(current / total * 100)}%`;
+					if (current >= total) loadingState.textContent = 'STARTING FLIGHT';
 				} else {
 					statusProgress.removeAttribute('value');
 					statusProgress.removeAttribute('max');
