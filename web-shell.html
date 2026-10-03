@@ -150,6 +150,24 @@ body {
 			</div>
 		</div>
 
+		<script>
+// Observe the browser's actual audio state before Godot creates its context.
+// Autoplay permission can leave SOUND enabled while the context is suspended.
+window.novaAudioState = { ready: false };
+for (const name of ['AudioContext', 'webkitAudioContext']) {
+	const NativeAudioContext = window[name];
+	if (typeof NativeAudioContext !== 'function') continue;
+	window[name] = new Proxy(NativeAudioContext, {
+		construct(target, args, newTarget) {
+			const context = Reflect.construct(target, args, newTarget);
+			const updateState = () => { window.novaAudioState.ready = context.state === 'running'; };
+			context.addEventListener('statechange', updateState);
+			updateState();
+			return context;
+		},
+	});
+}
+		</script>
 		<script src="$GODOT_URL"></script>
 		<script>
 const GODOT_CONFIG = $GODOT_CONFIG;

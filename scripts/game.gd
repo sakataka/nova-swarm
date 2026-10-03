@@ -60,7 +60,8 @@ var _web_window: Variant = null
 var _web_visibility_callback: Variant = null
 var _web_pagehide_callback: Variant = null
 var _web_pageshow_callback: Variant = null
-var _web_title_music_replayed := false
+var _web_audio_state: Variant = null
+var _web_audio_waiting := false
 
 var player = PlayerScript.new()
 var projectiles = ProjectileManagerScript.new()
@@ -198,6 +199,9 @@ func _setup_web_audio_lifecycle() -> void:
 		return
 	_web_document = JavaScriptBridge.get_interface("document")
 	_web_window = JavaScriptBridge.get_interface("window")
+	_web_audio_state = JavaScriptBridge.get_interface("novaAudioState")
+	if _web_audio_state != null:
+		_web_audio_waiting = not bool(_web_audio_state.ready)
 	_web_visibility_callback = JavaScriptBridge.create_callback(_on_web_visibility_changed)
 	_web_pagehide_callback = JavaScriptBridge.create_callback(_on_web_pagehide)
 	_web_pageshow_callback = JavaScriptBridge.create_callback(_on_web_pageshow)
@@ -219,6 +223,7 @@ func _teardown_web_audio_lifecycle() -> void:
 	_web_pageshow_callback = null
 	_web_document = null
 	_web_window = null
+	_web_audio_state = null
 
 
 func _on_web_visibility_changed(_arguments: Array) -> void:
@@ -415,6 +420,7 @@ func _setup_native_window() -> void:
 
 func _process(delta: float) -> void:
 	var dt: float = min(delta, 0.033)
+	_update_web_audio_start()
 	_update_ui_feedback(dt)
 	beat_clock.update(dt, audio_manager.current_music_key, audio_manager.get_music_position())
 	if beat_clock.ticked:
@@ -467,7 +473,6 @@ func _update_feedback(dt: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	_replay_web_title_music_after_input(event)
 	if event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
 		_ui_pointer = (event as InputEventMouseMotion).position
 	elif event is InputEventScreenTouch:
@@ -502,24 +507,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-func _replay_web_title_music_after_input(event: InputEvent) -> void:
-	if _web_title_music_replayed or OS.get_name() != "Web" or state != GameState.TITLE:
+func _update_web_audio_start() -> void:
+	if _web_audio_state == null:
 		return
-	var is_initial_press := false
-	if event is InputEventMouseButton:
-		var mouse_event := event as InputEventMouseButton
-		is_initial_press = mouse_event.pressed and mouse_event.button_index == MOUSE_BUTTON_LEFT
-	elif event is InputEventScreenTouch:
-		is_initial_press = (event as InputEventScreenTouch).pressed
-	elif event is InputEventKey:
-		is_initial_press = (event as InputEventKey).pressed and not (event as InputEventKey).echo
-	elif event is InputEventJoypadButton:
-		is_initial_press = (event as InputEventJoypadButton).pressed
-	if not is_initial_press:
-		return
-
-	_web_title_music_replayed = true
-	audio_manager.replay_current_music(0.08)
+	var waiting := not bool(_web_audio_state.ready)
+	var became_ready := _web_audio_waiting and not waiting
+	_web_audio_waiting = waiting
+	if became_ready:
+		# Resume is asynchronous. Retry the current cue after the context runs,
+		# including when the first gesture already deployed or changed scenes.
+		audio_manager.replay_current_music(0.08)
 
 
 func _handle_title_pointer_input(event: InputEvent) -> bool:
@@ -560,6 +557,9 @@ func _settings_hitboxes() -> Dictionary:
 
 func _activate_setting(key: String) -> void:
 	if key == "sound":
+		if _web_audio_waiting and not audio_manager.muted:
+			# The first sound press unlocks audio; it must not turn SOUND off.
+			return
 		audio_manager.toggle_mute()
 	elif key == "motion":
 		reduced_motion = not reduced_motion
@@ -2575,7 +2575,8 @@ func _draw_settings_controls() -> void:
 		var focused := state == GameState.TITLE and title_focus == (3 if key == "sound" else 4)
 		var hover := float(_ui_hover.get(key, 0.0))
 		_draw_ui_surface(rect, Color(Config.UI_PANEL_DARK, 0.92), Color(Config.UI_CYAN, 0.75 if focused else 0.18 + 0.4 * hover), 2 if portrait_pad else 1)
-		var label := ("SOUND OFF" if audio_manager.muted else "SOUND ON") if key == "sound" else ("MOTION LOW" if reduced_motion else "MOTION FULL")
+		var sound_label := "SOUND OFF" if audio_manager.muted else "START SOUND" if _web_audio_waiting else "SOUND ON"
+		var label := sound_label if key == "sound" else ("MOTION LOW" if reduced_motion else "MOTION FULL")
 		_draw_centered_in_width(label, rect.position.x, rect.size.x, rect.position.y + rect.size.y * 0.58, 32 if portrait_pad else 11, Config.UI_TEXT if hover > 0.1 or focused else Config.UI_TEXT_DIM)
 
 

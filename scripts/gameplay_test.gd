@@ -45,6 +45,10 @@ func _initialize() -> void:
 	_assert(scene.audio_manager.muted, "sound stays muted after the emulated click")
 	scene._handle_settings_input(settings_touch)
 	_assert(not scene.audio_manager.muted, "second real sound tap unmutes audio")
+	scene._web_audio_waiting = true
+	scene._handle_settings_input(settings_touch)
+	_assert(not scene.audio_manager.muted, "first sound press while browser audio waits does not mute")
+	scene._web_audio_waiting = false
 	settings_touch.position = Rect2(scene._settings_hitboxes().motion).get_center()
 	scene._handle_settings_input(settings_touch)
 	_assert(scene.reduced_motion, "touch motion control enables reduced motion")
